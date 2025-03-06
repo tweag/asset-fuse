@@ -7,6 +7,7 @@ import (
 	"time"
 
 	remoteasset_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/asset/v1"
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
@@ -22,11 +23,10 @@ type RemoteAssetService struct {
 
 func (r *RemoteAssetService) FetchBlob(
 	ctx context.Context, timeout time.Duration, oldestContentAccepted time.Time,
-	uris []string, integrity integritypkg.Integrity, qualifiers map[string]string,
-	digestFunction integrity.Algorithm,
+	asset api.Asset, digestFunction integrity.Algorithm,
 ) (FetchBlobResponse, error) {
 	resp, err := r.client.FetchBlob(ctx, protoFetchBlobRequest(
-		timeout, oldestContentAccepted, uris, integrity, qualifiers, digestFunction,
+		timeout, oldestContentAccepted, asset.URIs, asset.Integrity, asset.Qualifiers, digestFunction,
 	))
 	if err != nil {
 		return FetchBlobResponse{}, err
@@ -38,7 +38,7 @@ func (r *RemoteAssetService) FetchBlob(
 	}
 
 	// perform some basic validation
-	if knownChecksum, ok := integrity.ChecksumForAlgorithm(digestFunction); ok {
+	if knownChecksum, ok := asset.Integrity.ChecksumForAlgorithm(digestFunction); ok {
 		// If the digest is known in advance, we can validate it.
 		knownDigest := integritypkg.NewDigest(knownChecksum.Hash, out.BlobDigest.SizeBytes, digestFunction)
 		if !knownDigest.Equals(out.BlobDigest, digestFunction) {

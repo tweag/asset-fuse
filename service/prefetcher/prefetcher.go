@@ -7,11 +7,12 @@ import (
 	"io"
 	"time"
 
+	"github.com/tweag/asset-fuse/api"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
-	"github.com/tweag/asset-fuse/service/api"
 	assetService "github.com/tweag/asset-fuse/service/asset"
 	casService "github.com/tweag/asset-fuse/service/cas"
 	"github.com/tweag/asset-fuse/service/downloader"
+	"github.com/tweag/asset-fuse/service/status"
 )
 
 // Prefetcher implements a simple prefetching mechanism.
@@ -28,14 +29,14 @@ import (
 // This is a proof of concept and should be improved in the future.
 type Prefetcher struct {
 	remoteCAS      casService.CAS
-	localCAS       casService.CAS
+	localCAS       casService.LocalCAS
 	remoteAsset    assetService.Asset
 	downloader     downloader.Downloader
 	digestFunction integritypkg.Algorithm
 }
 
 // NewPrefetcher creates a new Prefetcher.
-func NewPrefetcher(remoteCAS casService.CAS, localCAS casService.CAS, remoteAsset assetService.Asset, downloader downloader.Downloader, digestFunction integritypkg.Algorithm) *Prefetcher {
+func NewPrefetcher(remoteCAS casService.CAS, localCAS casService.LocalCAS, remoteAsset assetService.Asset, downloader downloader.Downloader, digestFunction integritypkg.Algorithm) *Prefetcher {
 	return &Prefetcher{
 		remoteCAS:      remoteCAS,
 		localCAS:       localCAS,
@@ -56,7 +57,7 @@ func (p *Prefetcher) Start(ctx context.Context) (stopFunc func() error, err erro
 // TODO: use information we get from streaming to fill local cache (or in-memory cache) if needed.
 // TODO: make the source configurable via a policy. This could mean to only stream from local cache,
 // instead of allowing the prefetcher to choose the source.
-func (p *Prefetcher) Stream(ctx context.Context, uris []string, integrity integritypkg.Integrity, qualifiers map[string]string) (io.ReadCloser, error) {
+func (p *Prefetcher) Stream(ctx context.Context, asset api.Asset) (io.ReadCloser, error) {
 	panic("implement me")
 }
 
@@ -66,8 +67,13 @@ func (p *Prefetcher) Stream(ctx context.Context, uris []string, integrity integr
 // The caller is responsible for closing the reader.
 // TODO: for now, we only support streaming from the local cache (so we have random access via file io).
 // TODO: Remote random access is theoretically possible, but requires intelligent caching / prefetching to be efficient.
-func (p *Prefetcher) RandomAccessStream(ctx context.Context) (readerAtCloser, error) {
-	panic("implement me")
+func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset) (readerAtCloser, error) {
+	// since we only have random access to the local cache,
+	// we just materialize the data and return a reader for the local cache.
+	if err := p.Materialize(ctx, asset); err != nil {
+		return nil, err
+	}
+	panic("implement random access to the local cache")
 }
 
 // Prefetch ensures that the asset referenced by the given URIs and integrity is available in the remote CAS.
@@ -75,7 +81,7 @@ func (p *Prefetcher) RandomAccessStream(ctx context.Context) (readerAtCloser, er
 // This means that calling Prefetch doesn't guarantee that the data is available locally.
 // TODO: decide how users can get notified when the prefetching is done.
 // TODO: deduplicate requests.
-func (p *Prefetcher) Prefetch(ctx context.Context, uris []string, integrity integritypkg.Integrity, qualifiers map[string]string) error {
+func (p *Prefetcher) Prefetch(ctx context.Context, asset api.Asset) error {
 	// TODO: make this non-blocking with a method to get notified when the prefetching is done.
 	// TODO: for now, this is blocking - bad.
 
@@ -85,19 +91,19 @@ func (p *Prefetcher) Prefetch(ctx context.Context, uris []string, integrity inte
 // Materialize ensures that the asset referenced by the given URIs and integrity is available in the local cache for reading.
 // Our only goal is to make the data available locally, so we can stop as soon as localCAS has the expected data.
 // This means that calling Materialize doesn't guarantee that the data is available remotely.
-func (p *Prefetcher) Materialize(ctx context.Context, uris []string, integrity integritypkg.Integrity, qualifiers map[string]string, sizeHint int64) error {
+func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 	// TODO: make this non-blocking with a method to get notified when the prefetching is done.
 	// TODO: for now, this is blocking - bad.
 	if p.localCAS == nil {
 		return errors.New("Materialize called without disk cache")
 	}
 
-	checksum, haveExpectedChecksum := integrity.ChecksumForAlgorithm(p.digestFunction)
+	checksum, haveExpectedChecksum := asset.Integrity.ChecksumForAlgorithm(p.digestFunction)
 
-	if sizeHint >= 0 && haveExpectedChecksum {
+	if asset.SizeHint >= 0 && haveExpectedChecksum {
 		// we know the hash and size of the expected data
 		// we can construct the digest in advance
-		return p.materializeWithDigest(ctx, uris, integrity, integritypkg.NewDigest(checksum.Hash, sizeHint, p.digestFunction), qualifiers)
+		return p.materializeWithDigest(ctx, asset, integritypkg.NewDigest(checksum.Hash, asset.SizeHint, p.digestFunction))
 	}
 
 	panic("implement materialize if the digest is not known in advance (missing hash or size)")
@@ -136,12 +142,14 @@ func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...in
 			return err
 		}
 
-		if len(response) != 1 {
-			return errors.New("unexpected number of responses from local CAS: expected 1, got " + string(len(response)))
+		if len(response) != len(digests) {
+			return fmt.Errorf("unexpected number of responses from local CAS: expected %d, got %d", len(digests), len(response))
 		}
 		// TODO: follow the spec and properly check the response
-		if response[0].Status.Code != api.Status_OK {
-			return errors.New("unexpected status from local CAS: " + response[0].Status.Message)
+		for _, response := range response {
+			if response.Status.Code != status.Status_OK {
+				return fmt.Errorf("unexpected status %d from local CAS: %s", response.Status.Code, response.Status.Message)
+			}
 		}
 		return nil
 	}
@@ -150,7 +158,7 @@ func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...in
 	panic("implement data streaming when transferring blobs from remote CAS to disk cache")
 }
 
-func (p *Prefetcher) materializeWithDigest(ctx context.Context, uris []string, integrity integritypkg.Integrity, digest integritypkg.Digest, qualifiers map[string]string) error {
+func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset, digest integritypkg.Digest) error {
 	// first, check if the data is already in the local cache
 	missingBlobs, err := p.localCAS.FindMissingBlobs(ctx, []integritypkg.Digest{digest}, p.digestFunction)
 	if err != nil {
@@ -176,9 +184,12 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, uris []string, i
 	if p.remoteAsset != nil {
 		// TODO: make timeout and oldestContentAccepted configurable.
 		// TODO: choose reasonable defaults.
-		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, uris, integrity, qualifiers, p.digestFunction)
+		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
 		if err != nil {
 			return err
+		}
+		if !digest.Equals(fetchBlobResponse.BlobDigest, p.digestFunction) {
+			return fmt.Errorf("expected digest %s, got %s", digest, fetchBlobResponse.BlobDigest)
 		}
 		// We now assume that the data is in the remote CAS.
 		// We simply download it from the remote CAS to the local CAS.

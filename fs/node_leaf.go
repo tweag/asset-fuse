@@ -9,6 +9,7 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/integrity"
 )
@@ -80,7 +81,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	// Performance hack: we will use this opportunity to prefetch the asset into the remote cache.
 	// This way, remote execution can magically use this file as an action input (without us uploading it to the remote cache).
 	// TODO: make this configurable and non-blocking.
-	if err := root.prefetcher.Prefetch(ctx, l.manifestNode.URIs, l.manifestNode.Integrity, nil); err != nil {
+	if err := root.prefetcher.Prefetch(ctx, l.toAsset()); err != nil {
 		panic("prefetch failed - this should be handled gracefully, but is a temporary restriction")
 	}
 
@@ -174,15 +175,17 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		return nil, 0, syscall.EIO
 	}
 
+	asset := l.toAsset()
+
 	// We are about the read the file, so we materialize the data.
 	// TODO: this is blocking and fills the local cache with the
 	// full contents of the leaf - optimize this.
-	if err := root.prefetcher.Materialize(ctx, l.manifestNode.URIs, l.manifestNode.Integrity, nil, l.manifestNode.SizeHint); err != nil {
+	if err := root.prefetcher.Materialize(ctx, asset); err != nil {
 		return nil, 0, syscall.EIO
 	}
 
 	// TODO: properly initialize the file handle if needed
-	reader, err := root.prefetcher.RandomAccessStream(ctx)
+	reader, err := root.prefetcher.RandomAccessStream(ctx, asset)
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok {
 			return nil, 0, errno
@@ -194,6 +197,15 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		reader: reader,
 		inode:  l,
 	}, 0, 0
+}
+
+func (l *leaf) toAsset() api.Asset {
+	// TODO: make Qualifiers configurable
+	return api.Asset{
+		URIs:      l.manifestNode.URIs,
+		Integrity: l.manifestNode.Integrity,
+		SizeHint:  l.manifestNode.SizeHint,
+	}
 }
 
 type leafHandle struct {

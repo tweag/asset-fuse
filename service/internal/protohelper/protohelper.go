@@ -3,7 +3,7 @@ package protohelper
 import (
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/tweag/asset-fuse/integrity"
-	"github.com/tweag/asset-fuse/service/api"
+	"github.com/tweag/asset-fuse/service/status"
 	gstatus "google.golang.org/genproto/googleapis/rpc/status"
 )
 
@@ -38,9 +38,9 @@ func FromProtoDigestFunction(digestFunction remoteexecution_proto.DigestFunction
 	return integrity.SHA256
 }
 
-func FromProtoStatus(googleStatus *gstatus.Status) api.Status {
-	return api.Status{
-		Code:    api.StatusCode(googleStatus.Code),
+func FromProtoStatus(googleStatus *gstatus.Status) status.Status {
+	return status.Status{
+		Code:    status.StatusCode(googleStatus.Code),
 		Message: googleStatus.Message,
 	}
 }

@@ -1,4 +1,4 @@
-package api
+package status
 
 type Status struct {
 	Code    StatusCode

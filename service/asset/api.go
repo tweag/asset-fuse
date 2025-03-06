@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/integrity"
-	"github.com/tweag/asset-fuse/service/api"
+	"github.com/tweag/asset-fuse/service/status"
 )
 
 // Asset is the interface for a (remote) asset service.
@@ -18,14 +19,13 @@ type Asset interface {
 type Fetch interface {
 	FetchBlob(
 		ctx context.Context, timeout time.Duration, oldestContentAccepted time.Time,
-		uris []string, integrity integrity.Integrity, qualifiers map[string]string,
-		digestFunction integrity.Algorithm,
+		asset api.Asset, digestFunction integrity.Algorithm,
 	) (FetchBlobResponse, error)
 	// This may be extended to also support the FetchDirectory rpc in the future.
 }
 
 type FetchBlobResponse struct {
-	Status         api.Status
+	Status         status.Status
 	URI            string
 	Qualifiers     map[string]string
 	ExpiresAt      time.Time

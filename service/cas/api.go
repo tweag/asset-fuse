@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/tweag/asset-fuse/integrity"
-	"github.com/tweag/asset-fuse/service/api"
+	"github.com/tweag/asset-fuse/service/status"
 )
 
 // CAS is the interface for a content-addressable storage system.
@@ -15,6 +15,11 @@ type CAS interface {
 	Checker
 	Reader
 	Writer
+}
+
+type LocalCAS interface {
+	CAS
+	RandomAccessStream
 }
 
 type Checker interface {
@@ -30,6 +35,18 @@ type Reader interface {
 type Writer interface {
 	BatchUpdateBlobs(ctx context.Context, blobData DigestsAndData, digestFunction integrity.Algorithm) (BatchUpdateBlobsResponse, error)
 	WriteStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset int64) (io.WriteCloser, error)
+}
+
+// RandomAccessStream is an interface for reading blobs at arbitrary offsets (random accesss via ReadAt).
+// For now, this is only implemented by the disk CAS.
+// TODO: think about a good abstraction to make this more generic, while being efficient.
+type RandomAccessStream interface {
+	ReadRandomAccessStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset, limit int64) (ReaderAtCloser, error)
+}
+
+type ReaderAtCloser interface {
+	io.ReaderAt
+	io.Closer
 }
 
 type BatchReadBlobsResponse []ReadBlobsResponse
@@ -52,7 +69,7 @@ type BatchUpdateBlobsResponse []UpdateBlobsResponse
 
 type UpdateBlobsResponse struct {
 	Digest integrity.Digest
-	Status api.Status
+	Status status.Status
 }
 
 type DigestAndData struct {
