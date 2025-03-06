@@ -3,6 +3,8 @@ package fs
 import (
 	"context"
 	"io"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -17,8 +19,6 @@ import (
 type leaf struct {
 	fs.Inode
 	// The digest of the leaf
-	// It is either fully initialized or not initialized at all
-	// (i.e. the size is 0 and the hash is all zero bytes, or size is correct and hash is correct)
 	digest       integrity.Digest
 	manifestNode *manifest.Leaf
 }
@@ -35,7 +35,7 @@ func (l *leaf) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 		// for now, we assume that "Lookup" on the parent must have initialized the digest
 		// and we don't try to fetch here.
 		// TODO: think about a better way to handle this.
-		return syscall.EIO
+		panic("digest uninitialized in Getattr - this should never happen but is a temporary restriction")
 	}
 	out.Mode = modeRegularReadonly
 	// TODO: should ctime be the same as mtime?
@@ -48,23 +48,50 @@ func (l *leaf) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 
 func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, syscall.Errno) {
 	root := l.Root().Operations().(*root)
-	fallbackName := "user." + root.digestAlgorithm.String()
 
-	if len(root.digestHashAttributeName) > 0 && attr == root.digestHashAttributeName || attr == fallbackName {
-		// we have a match
-	} else {
+	var digest integrity.Digest
+	var algorithm integrity.Algorithm
+	if attr == root.digestHashAttributeName {
+		digest = l.digest
+		algorithm = root.digestAlgorithm
+	} else if !strings.HasPrefix(attr, "user.") {
 		// unsupported attribute name
 		return 0, syscall.ENODATA
+	} else {
+		// fallback: check for to the "user." prefix for Buck2
+		algorithmName := strings.TrimPrefix(attr, "user.")
+		algorithm, ok := integrity.AlgorithmFromString(algorithmName)
+		if !ok {
+			// unsupported attribute name
+			return 0, syscall.ENODATA
+		}
+		checksum, ok := l.manifestNode.Integrity.ChecksumForAlgorithm(algorithm)
+		if !ok {
+			// integrity doesn't have a checksum for the algorithm
+			return 0, syscall.ENODATA
+		}
+		// TODO: this reaches into l.digest internals - is this ok?
+		digest = integrity.NewDigest(checksum.Hash, l.digest.SizeBytes, checksum.Algorithm)
+		algorithm = checksum.Algorithm
 	}
 
-	var destSizeBytes uint32 = uint32(root.digestAlgorithm.SizeBytes())
+	// Someone is trying to read the digest hash via xattr.
+	// We can infer that they are coming from Bazel, Buck2, or a similar tool.
+	// Performance hack: we will use this opportunity to prefetch the asset into the remote cache.
+	// This way, remote execution can magically use this file as an action input (without us uploading it to the remote cache).
+	// TODO: make this configurable and non-blocking.
+	if err := root.prefetcher.Prefetch(ctx, l.manifestNode.URIs, l.manifestNode.Integrity, nil); err != nil {
+		panic("prefetch failed - this should be handled gracefully, but is a temporary restriction")
+	}
+
+	var destSizeBytes uint32 = uint32(algorithm.SizeBytes())
 
 	if len(dest) < int(destSizeBytes) {
 		// buffer too small
 		return destSizeBytes, syscall.ERANGE
 	}
 
-	if err := l.digest.CopyHashInto(dest, root.digestAlgorithm); err != nil {
+	if err := digest.CopyHashInto(dest, algorithm); err != nil {
 		// should be unreachable (we checked the buffer size in advance)
 		// and there is no other reason for the copy to fail
 		return 0, syscall.EIO
@@ -76,22 +103,18 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 func (l *leaf) Listxattr(ctx context.Context, dest []byte) (uint32, syscall.Errno) {
 	// we support up to two extended attributes:
 	// - the user-defined attribute name
-	// - the fallback attribute name
+	// - fallback attribute names (for Buck2): "user." + algorithm
 	//
 	// These could be identical, or the user-defined name could be empty.
-	// We don't support any other attributes.
+	// We don't support any other extended attributes.
 	root := l.Root().Operations().(*root)
-	fallbackName := "user." + root.digestAlgorithm.String()
 
 	var supportedAttributes []string
-	switch {
-	case len(root.digestHashAttributeName) == 0, root.digestHashAttributeName == fallbackName:
-		// user-defined name is empty
-		// or the user-defined name is the same as the fallback name
-		supportedAttributes = []string{fallbackName}
-	default:
-		// both the user-defined and the fallback name are supported
-		supportedAttributes = []string{root.digestHashAttributeName, fallbackName}
+	for integrityForAlgorithm := range l.manifestNode.Integrity.Items() {
+		supportedAttributes = append(supportedAttributes, "user."+integrityForAlgorithm.Algorithm.String())
+	}
+	if len(root.digestHashAttributeName) > 0 && !slices.Contains(supportedAttributes, root.digestHashAttributeName) {
+		supportedAttributes = append(supportedAttributes, root.digestHashAttributeName)
 	}
 
 	// calculate the total size of the attribute names
@@ -122,6 +145,7 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 	// TODO: decide if / when opening a leaf should issue a fetch on the remote asset API
 	// TODO: decide if opening a leaf should prefetch the contents into the local cache [materialize] (assuming that we expect the leaf to be read soon)
 	// TODO: support non-blocking io (O_NONBLOCK, O_NDELAY)
+	root := l.Root().Operations().(*root)
 
 	switch {
 	case flags&syscall.O_ACCMODE != syscall.O_RDONLY,
@@ -133,7 +157,11 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		return nil, 0, syscall.EACCES
 	}
 
-	supportedFlags := uint32(syscall.O_RDONLY)
+	// syscall.O_LARGEFILE is 0x0 on x86_64, but the kernel
+	// supplies 0x8000 anyway, except on mips64el, where 0x8000 is
+	// used for O_DIRECT.
+	const explicitLargeFileFlag = 0x8000
+	supportedFlags := uint32(syscall.O_RDONLY | syscall.O_LARGEFILE | explicitLargeFileFlag | syscall.O_NOATIME | syscall.O_NOFOLLOW)
 	unsupportedFlags := flags &^ supportedFlags
 	if unsupportedFlags != 0 {
 		return nil, 0, syscall.EINVAL
@@ -146,9 +174,24 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		return nil, 0, syscall.EIO
 	}
 
+	// We are about the read the file, so we materialize the data.
+	// TODO: this is blocking and fills the local cache with the
+	// full contents of the leaf - optimize this.
+	if err := root.prefetcher.Materialize(ctx, l.manifestNode.URIs, l.manifestNode.Integrity, nil, l.manifestNode.SizeHint); err != nil {
+		return nil, 0, syscall.EIO
+	}
+
 	// TODO: properly initialize the file handle if needed
+	reader, err := root.prefetcher.RandomAccessStream(ctx)
+	if err != nil {
+		if errno, ok := err.(syscall.Errno); ok {
+			return nil, 0, errno
+		}
+		// unknown error
+		return nil, 0, syscall.EIO
+	}
 	return &leafHandle{
-		reader: nil, // TODO: initialize the reader (this must be somehow connected to the remote asset API, remote CAS, and local cache)
+		reader: reader,
 		inode:  l,
 	}, 0, 0
 }
@@ -158,7 +201,7 @@ type leafHandle struct {
 
 	// TODO: io.ReaderAt assumes random access to the data.
 	// We should think about how to handle sequential reads and prefetching.
-	reader readAtCloser
+	reader readerAtCloser
 
 	// the leaf inode that this handle belongs to
 	inode *leaf

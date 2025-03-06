@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	integritypkg "github.com/tweag/asset-fuse/integrity"
@@ -45,6 +46,27 @@ func NewPrefetcher(remoteCAS casService.CAS, localCAS casService.CAS, remoteAsse
 }
 
 func (p *Prefetcher) Start(ctx context.Context) (stopFunc func() error, err error) {
+	panic("implement me")
+}
+
+// Stream creates a reader for an asset.
+// It is used to implement reading from a leaf file handle.
+// Prefetcher can choose to stream the asset from any source.
+// The caller is responsible for closing the reader.
+// TODO: use information we get from streaming to fill local cache (or in-memory cache) if needed.
+// TODO: make the source configurable via a policy. This could mean to only stream from local cache,
+// instead of allowing the prefetcher to choose the source.
+func (p *Prefetcher) Stream(ctx context.Context, uris []string, integrity integritypkg.Integrity, qualifiers map[string]string) (io.ReadCloser, error) {
+	panic("implement me")
+}
+
+// RandomAccessStream creates a reader for an asset that supports random access (ReadAt).
+// It is used to implement reading from a leaf file handle.
+// Prefetcher can choose to stream the asset from any source.
+// The caller is responsible for closing the reader.
+// TODO: for now, we only support streaming from the local cache (so we have random access via file io).
+// TODO: Remote random access is theoretically possible, but requires intelligent caching / prefetching to be efficient.
+func (p *Prefetcher) RandomAccessStream(ctx context.Context) (readerAtCloser, error) {
 	panic("implement me")
 }
 

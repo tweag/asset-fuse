@@ -4,7 +4,9 @@ import (
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/service/prefetcher"
 )
 
 type root struct {
@@ -26,6 +28,24 @@ type root struct {
 	// This should be the same as "--unix_digest_hash_attribute_name" in Bazel.
 	// In addition, we always support the "user." prefix for Buck2.
 	digestHashAttributeName string
+
+	prefetcher *prefetcher.Prefetcher
+}
+
+func Root(
+	manifestTree manifest.ManifestTree,
+	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string,
+	prefetcher *prefetcher.Prefetcher,
+) *root {
+	return &root{
+		dirent: dirent{
+			manifestNode: manifestTree.Root,
+		},
+		digestAlgorithm:         digestAlgorithm,
+		mtime:                   mtime,
+		digestHashAttributeName: digestHashAttributeName,
+		prefetcher:              prefetcher,
+	}
 }
 
 // ensure root type embeds fs.Inode

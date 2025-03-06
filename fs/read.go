@@ -13,9 +13,9 @@ func (l *leafReader) Close() error {
 }
 
 // ensure leafReader can be used in the leafHandle.
-var _ readAtCloser = (*leafReader)(nil)
+var _ readerAtCloser = (*leafReader)(nil)
 
-type readAtCloser interface {
+type readerAtCloser interface {
 	io.ReaderAt
 	io.Closer
 }

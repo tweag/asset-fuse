@@ -2,12 +2,14 @@ package fs
 
 import (
 	"context"
+	"slices"
 	"syscall"
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/tweag/asset-fuse/fs/manifest"
+	"github.com/tweag/asset-fuse/integrity"
 )
 
 type dirent struct {
@@ -44,9 +46,30 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 		out.SetAttrTimeout(direntTTL)
 		out.SetEntryTimeout(direntTTL)
 	case *manifest.Leaf:
+		checksum, ok := child.Integrity.ChecksumForAlgorithm(root.digestAlgorithm)
+		if !ok {
+			// digest algorithm not found
+			// TODO: decide if digest can be lazy-loaded
+			panic("digest algorithm not found - we should never get here, unless we want to allow leafs with no integrity for the digest algorithm")
+		}
+		if child.SizeHint < 0 {
+			// size hint not found
+			// TODO: decide if size hint can be lazy-loaded
+			panic("size hint not found - we should never get here, unless we want to allow leafs with no size hint")
+		}
+
 		// child is a readonly leaf
-		ops = &leaf{manifestNode: child}
+		ops = &leaf{
+			manifestNode: child,
+			// TODO: size hint can only be used
+			// if it is known (>= 0).
+			// Otherwise, we need to fetch the asset.
+			digest: integrity.NewDigest(checksum.Hash, child.SizeHint, checksum.Algorithm),
+		}
 		out.Mode = modeRegularReadonly
+		out.Size = uint64(child.SizeHint)
+		out.Blocks = (out.Size + 511) / 512
+
 		stableAttr.Mode = syscall.S_IFREG
 	default:
 		return nil, syscall.EIO
@@ -56,6 +79,40 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 	out.SetTimes(nil, &root.mtime, &root.mtime)
 
 	return n.NewInode(ctx, ops, stableAttr), 0
+}
+
+func (n *dirent) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	// preallocate the slice to contain all children, plus "." and ".."
+	var entries []fuse.DirEntry = make([]fuse.DirEntry, 0, len(n.manifestNode.Children)+2)
+	entries = append(entries,
+		fuse.DirEntry{Name: ".", Mode: modeDirReadonly},
+		fuse.DirEntry{Name: "..", Mode: modeDirReadonly},
+	)
+
+	// sort the names to ensure a deterministic order
+	names := make([]string, 0, len(n.manifestNode.Children))
+	for name := range n.manifestNode.Children {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	for _, name := range names {
+		var mode uint32
+		switch n.manifestNode.Children[name].(type) {
+		case *manifest.Directory:
+			mode = modeDirReadonly
+		case *manifest.Leaf:
+			mode = modeRegularReadonly
+		default:
+			return nil, syscall.EIO
+		}
+
+		entries = append(entries, fuse.DirEntry{
+			Name: name,
+			Mode: mode,
+		})
+	}
+	return fs.NewListDirStream(entries), 0
 }
 
 func (n *dirent) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
@@ -86,6 +143,9 @@ var _ = (fs.InodeEmbedder)((*dirent)(nil))
 
 // dirent needs to implement Lookup, a way to find a child node by name
 var _ = (fs.NodeLookuper)((*dirent)(nil))
+
+// dirent needs to list its children
+var _ = (fs.NodeReaddirer)((*dirent)(nil))
 
 // dirent needs to implement ways of reading file attributes
 var (

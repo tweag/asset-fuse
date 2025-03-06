@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"iter"
+	"strings"
 )
 
 // Digest represents the digest of a blob in the
@@ -145,6 +147,10 @@ func ChecksumFromSRI(integrity string) (Checksum, error) {
 	return checksum, nil
 }
 
+func ChecksumFromDigest(digest Digest, algorithm Algorithm) Checksum {
+	return Checksum{Algorithm: algorithm, Hash: digest.hash[:algorithm.SizeBytes()]}
+}
+
 func (c Checksum) ToSRI() string {
 	return fmt.Sprintf("%s-%s", c.Algorithm.String(), base64.StdEncoding.EncodeToString(c.Hash))
 }
@@ -189,6 +195,31 @@ type Integrity struct {
 
 func (i Integrity) Empty() bool {
 	return i.sha256.Hash == nil && i.sha384.Hash == nil && i.sha512.Hash == nil && i.blake3.Hash == nil
+}
+
+func (i Integrity) Items() iter.Seq[Checksum] {
+	return func(yield func(Checksum) bool) {
+		if checksum, ok := i.ChecksumForAlgorithm(SHA256); ok {
+			if !yield(checksum) {
+				return
+			}
+		}
+		if checksum, ok := i.ChecksumForAlgorithm(SHA384); ok {
+			if !yield(checksum) {
+				return
+			}
+		}
+		if checksum, ok := i.ChecksumForAlgorithm(SHA512); ok {
+			if !yield(checksum) {
+				return
+			}
+		}
+		if checksum, ok := i.ChecksumForAlgorithm(Blake3); ok {
+			if !yield(checksum) {
+				return
+			}
+		}
+	}
 }
 
 // Equivalent returns true if the two Integrity objects are equivalent.
@@ -334,6 +365,21 @@ type Algorithm struct{ name string }
 
 func (a Algorithm) String() string { return a.name }
 
+func AlgorithmFromString(name string) (Algorithm, bool) {
+	name = strings.ToLower(name)
+	switch name {
+	case "sha256":
+		return SHA256, true
+	case "sha384":
+		return SHA384, true
+	case "sha512":
+		return SHA512, true
+	case "blake3":
+		return Blake3, true
+	}
+	return Algorithm{}, false
+}
+
 func (a Algorithm) SizeBytes() int {
 	switch a {
 	case SHA256:
@@ -350,10 +396,11 @@ func (a Algorithm) SizeBytes() int {
 }
 
 var (
-	SHA256 Algorithm = Algorithm{"sha256"}
-	SHA384 Algorithm = Algorithm{"sha384"}
-	SHA512 Algorithm = Algorithm{"sha512"}
-	Blake3 Algorithm = Algorithm{"blake3"}
+	SHA256          Algorithm = Algorithm{"sha256"}
+	SHA384          Algorithm = Algorithm{"sha384"}
+	SHA512          Algorithm = Algorithm{"sha512"}
+	Blake3          Algorithm = Algorithm{"blake3"}
+	KnownAlgorithms           = []Algorithm{SHA256, SHA384, SHA512, Blake3}
 )
 
 var (

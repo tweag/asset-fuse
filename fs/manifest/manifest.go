@@ -3,7 +3,6 @@ package manifest
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 
@@ -44,6 +43,10 @@ func (m Manifest) validate() error {
 		if entry.Size != nil && *entry.Size < 0 {
 			issuesForPath = append(issuesForPath, `"size" must be a non-negative integer`)
 		}
+		// TODO: lift this restriction when we support learning the size
+		if entry.Size == nil {
+			issuesForPath = append(issuesForPath, `"size" must be provided (for now - this is a temporary restriction)`)
+		}
 		if len(issuesForPath) > 0 {
 			issues = append(issues, path+": "+strings.Join(issuesForPath, ", "))
 		}
@@ -69,7 +72,7 @@ type ManifestEntry struct {
 	// If provided, the size can be returned to the client before the artifact is fetched.
 	// Otherwise, the size can be determined after fetching the artifact.
 	// You can also use an integrity hash h = hash("") to represent an empty file.
-	Size *int `json:"size,omitempty"`
+	Size *int64 `json:"size,omitempty"`
 }
 
 func (e *ManifestEntry) getIntegrity() ([]string, error) {
@@ -85,14 +88,16 @@ func (e *ManifestEntry) getIntegrity() ([]string, error) {
 	return integrity, nil
 }
 
+// Leaf: Same as ManifestEntry, but with Size being a value instead of a pointer.
+// This is used in the tree representation.
 type Leaf struct {
-	Checksum  integrity.Checksum
+	URIs      []string
 	Integrity integrity.Integrity
 	// SizeHint is the size of the artifact in bytes.
 	// If provided, the size can be returned to the client before the artifact is fetched.
 	// Otherwise, the size can be determined after fetching the artifact.
 	// A negative value indicates that the size is unknown.
-	SizeHint int
+	SizeHint int64
 }
 
 type Directory struct {
@@ -132,22 +137,27 @@ func (t ManifestTree) Insert(leafPath string, leaf Leaf) error {
 	for _, segment := range segments[:len(segments)-1] {
 		child, ok := current.Children[segment]
 		if !ok {
-			child = &Directory{}
+			child = &Directory{
+				Children: map[string]any{},
+			}
 			current.Children[segment] = child
 		}
 		dir, ok := child.(*Directory)
 		if !ok {
-			return errors.New("insertion path conflicts with existing leaf")
+			return insertionChildOfLeafError
 		}
 		current = dir
 	}
 
 	leafName := segments[len(segments)-1]
 	if _, ok := current.Children[leafName]; ok {
-		// This should be unreachable because we read paths from the a map,
-		// where each key is a unqique leaf path.
-		// If we ever get here, the canonicalization of paths is broken.
-		return errors.New("insertion path conflicts with existing leaf")
+		if _, ok := current.Children[leafName].(*Leaf); ok {
+			// This should be unreachable because we read paths from the a map,
+			// where each key is a unqique leaf path (at least for the default view)
+			// If we ever get here, the canonicalization of paths is broken (or we have a non-unique view).
+			return insertionPathConflictError
+		}
+		return insertingPathConflictAndKindError
 	}
 	current.Children[leafName] = &leaf
 	return nil
@@ -157,7 +167,7 @@ func NewTree() ManifestTree {
 	return ManifestTree{Root: &Directory{Children: map[string]any{}}}
 }
 
-func TreeFromManifest(reader io.Reader) (ManifestTree, error) {
+func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algorithm) (ManifestTree, error) {
 	decoder := json.NewDecoder(reader)
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
@@ -168,27 +178,15 @@ func TreeFromManifest(reader io.Reader) (ManifestTree, error) {
 		return ManifestTree{}, err
 	}
 
-	tree := NewTree()
-	for path, entry := range manifest {
-		sriList, err := entry.getIntegrity()
-		if err != nil {
-			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
-		leafIntegrity, err := integrity.IntegrityFromString(sriList...)
-		if err != nil {
-			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
-		leaf := Leaf{
-			Integrity: leafIntegrity,
-			SizeHint:  -1,
-		}
-		if entry.Size != nil {
-			leaf.SizeHint = *entry.Size
-		}
-		if err := tree.Insert(path, leaf); err != nil {
-			return ManifestTree{}, fmt.Errorf("inserting %s from manifest into tree: %w", path, err)
-		}
-	}
-
-	return tree, nil
+	// TODO: allow for multiple views of the same manifest
+	// - default: render leafs using their path
+	// - uri: render leafs using their URIs
+	// - cas: render leafs using their (hex) digest with modes: [repository_cache, remote_cache, nix_store, (docker / oci image blobs)]
+	return view.Tree(manifest, digestFunction)
 }
+
+var (
+	insertionChildOfLeafError         = errors.New("insertion path conflicts with existing leaf")
+	insertionPathConflictError        = errors.New("insertion path conflicts with existing entry")
+	insertingPathConflictAndKindError = errors.New("insertion path conflicts with existing entry (which is a directory)")
+)
