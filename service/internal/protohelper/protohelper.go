@@ -2,7 +2,9 @@ package protohelper
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/tweag/asset-fuse/auth/grpcheaderinterceptor"
@@ -11,6 +13,7 @@ import (
 	gstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func ProtoDigestFunction(digestFunction integrity.Algorithm) remoteexecution_proto.DigestFunction_Value {
@@ -62,6 +65,8 @@ func Client(uri string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	case "grpc":
 		// unencrypted grpc
 		// TODO: maybe this should be guarded by a flag?
+		warnUnencryptedGRPC(uri)
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	case "grpcs":
 		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(nil)))
 	default:
@@ -74,3 +79,21 @@ func Client(uri string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 
 	return grpc.NewClient(target, opts...)
 }
+
+func warnUnencryptedGRPC(uri string) {
+	warnMutex.Lock()
+	defer warnMutex.Unlock()
+
+	if _, warned := WarnedURIs[uri]; warned {
+		return
+	}
+	WarnedURIs[uri] = struct{}{}
+	fmt.Fprintf(os.Stderr, "WARNING: using unencrypted grpc connection to %s - please consider using grpcs instead\n", uri)
+}
+
+// WarnedURIs is a set of URIs that have already been warned about.
+// It is protected by warnMutex, which must be held when accessing it.
+var (
+	WarnedURIs = make(map[string]struct{})
+	warnMutex  sync.Mutex
+)
