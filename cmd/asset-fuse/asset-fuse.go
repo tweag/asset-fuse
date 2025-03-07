@@ -9,6 +9,8 @@ import (
 	"github.com/tweag/asset-fuse/fs"
 	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/service/asset"
+	"github.com/tweag/asset-fuse/service/cas"
 	"github.com/tweag/asset-fuse/service/downloader"
 	"github.com/tweag/asset-fuse/service/prefetcher"
 )
@@ -29,7 +31,16 @@ func main() {
 		panic(err)
 	}
 
-	prefetcher := prefetcher.NewPrefetcher(nil, nil, nil, downloader.Downloader{}, integrity.SHA256)
+	diskCache, err := cas.NewDisk("/home/malte/.cache/asset-fuse")
+	if err != nil {
+		panic(err)
+	}
+	remoteCache, err := cas.NewRemote("grpcs://remote.buildbuddy.io")
+	if err != nil {
+		panic(err)
+	}
+	remoteAsset, err := asset.NewRemote("grpcs://remote.buildbuddy.io")
+	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, integrity.SHA256)
 
 	opts := goFUSEfs.Options{
 		// We probably want different timeouts, depending

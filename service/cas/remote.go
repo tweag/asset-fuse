@@ -9,16 +9,30 @@ import (
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
+	"github.com/tweag/asset-fuse/service/status"
 	bytestream_proto "google.golang.org/genproto/googleapis/bytestream"
+	"google.golang.org/grpc"
 )
 
 // Remote uses the remote execution API's ContentAddressableStorage service to store and retrieve blobs.
 // See also: https://raw.githubusercontent.com/bazelbuild/remote-apis/refs/tags/v2.11.0-rc2/build/bazel/remote/execution/v2/remote_execution.proto
 //
-// TODO: this implementation is incomplete and doesn't correctly handle well-defined cases mentioned in the proto file. THis needs to be addressed before v1.0.0.
+// TODO: this implementation is incomplete and doesn't correctly handle well-defined cases mentioned in the proto file. This needs to be addressed before v1.0.0.
 type Remote struct {
 	casClient        remoteexecution_proto.ContentAddressableStorageClient
 	byteStreamClient bytestream_proto.ByteStreamClient
+}
+
+func NewRemote(target string, opts ...grpc.DialOption) (*Remote, error) {
+	conn, err := protohelper.Client(target, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Remote{
+		casClient:        remoteexecution_proto.NewContentAddressableStorageClient(conn),
+		byteStreamClient: bytestream_proto.NewByteStreamClient(conn),
+	}, nil
 }
 
 func (r *Remote) FindMissingBlobs(ctx context.Context, blobDigests []integrity.Digest, digestFunction integrity.Algorithm) ([]integrity.Digest, error) {
@@ -53,10 +67,11 @@ func (r *Remote) ReadStream(ctx context.Context, blobDigest integrity.Digest, di
 	return &byteStreamReadCloser{
 		stream: stream,
 		cancel: cancel,
+		limit:  limit,
 	}, nil
 }
 
-func (r *Remote) WriteStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset int64) (io.WriteCloser, error) {
+func (r *Remote) WriteStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm) (io.WriteCloser, error) {
 	// TODO: for now, we only fill the remote CAS by using the remote asset API.
 	// implement WriteStream if we ever need to write to the remote CAS directly.
 	return nil, fmt.Errorf("asset-fuse does not yet implement WriteStream - please implement me if you need me :)")
@@ -67,6 +82,10 @@ type byteStreamReadCloser struct {
 	buf    bytes.Buffer
 	eof    bool
 	cancel context.CancelFunc
+
+	limit          int64
+	readFromRemote int64
+	writtenToOut   int64
 }
 
 func (b *byteStreamReadCloser) Read(p []byte) (n int, err error) {
@@ -75,8 +94,17 @@ func (b *byteStreamReadCloser) Read(p []byte) (n int, err error) {
 	availableFromLastRead := b.buf.Len()
 	copyFromLastRead := min(budget, availableFromLastRead)
 	if copyFromLastRead > 0 {
-		copy(p, b.buf.Next(n))
-		budget -= copyFromLastRead
+		n := copy(p, b.buf.Next(copyFromLastRead))
+		if n > budget {
+			// should never happen
+			panic(fmt.Sprintf("copy(%d, %d) > %d (budget exceeded)", n, copyFromLastRead, budget))
+		}
+		if n != copyFromLastRead {
+			// should never happen
+			panic(fmt.Sprintf("copy(%d, %d) != %d (logic flaw)", n, copyFromLastRead, n))
+		}
+		b.writtenToOut += int64(n)
+		budget -= n
 	}
 	if budget == 0 {
 		// we can fulfill the request with buffered data
@@ -93,6 +121,10 @@ func (b *byteStreamReadCloser) Read(p []byte) (n int, err error) {
 
 	// read from the stream
 	resp, err := b.stream.Recv()
+	var readFromRemoteNow int
+	if resp != nil {
+		readFromRemoteNow = len(resp.Data)
+	}
 	if err == io.EOF {
 		// we are at the end of the stream
 		// we will also not call Recv again
@@ -101,15 +133,21 @@ func (b *byteStreamReadCloser) Read(p []byte) (n int, err error) {
 	} else if err != nil {
 		return 0, err
 	}
+	b.readFromRemote += int64(readFromRemoteNow)
 
 	// copy the data to the buffer
-	n = copy(p, resp.Data)
-	if n < len(resp.Data) {
+	n = 0
+	if resp != nil {
+		n = copy(p[copyFromLastRead:], resp.Data)
+	}
+	b.writtenToOut += int64(n)
+	if n < readFromRemoteNow {
 		// we have more data than the requested read wants
 		// buffer for next call
 		b.buf.Write(resp.Data[n:])
 	}
-	return n, b.nilOrEOF()
+	copiedToOutTotal := copyFromLastRead + n
+	return copiedToOutTotal, b.nilOrEOF()
 }
 
 func (b *byteStreamReadCloser) Close() error {
@@ -173,18 +211,31 @@ func fromProtoBatchReadBlobsResponse(resp *remoteexecution_proto.BatchReadBlobsR
 		if decodeErr != nil {
 			return nil, fmt.Errorf("failed to decode digest %d: %w", i, decodeErr)
 		}
+		readResponses[i].Status = protohelper.FromProtoStatus(protoResponse.Status)
 		// we create a new slice to avoid sharing the underlying buffer
 		// TODO: check if proto / gRPC in Go actually recycles the buffer
 		// or if we can avoid this copy
 		readResponses[i].Data = make([]byte, len(protoResponse.Data))
 		copy(readResponses[i].Data, protoResponse.Data)
 	}
+
+	var issues int
+	for _, response := range readResponses {
+		if response.Data == nil || response.Status.Code != status.Status_OK {
+			issues++
+		}
+	}
+	if issues > 0 {
+		return readResponses, BatchResponseHasNonZeroStatus
+	}
+
 	return readResponses, nil
 }
 
 func protoReadRequest(blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset, limit int64) *bytestream_proto.ReadRequest {
 	return &bytestream_proto.ReadRequest{
 		ReadOffset:   offset,
+		ReadLimit:    limit,
 		ResourceName: fmt.Sprintf("blobs/%s/%d", blobDigest.Hex(digestFunction), blobDigest.SizeBytes),
 	}
 }

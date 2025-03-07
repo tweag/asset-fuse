@@ -2,10 +2,14 @@ package integrity
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"iter"
 	"strings"
 )
@@ -69,6 +73,17 @@ func (d Digest) Equals(other Digest, algorithm Algorithm) bool {
 	}
 	// Should be unreachable.
 	panic("unsupported algorithm")
+}
+
+func (d Digest) CheckContent(r io.Reader, algorithm Algorithm) error {
+	gotDigest, err := algorithm.CalculateDigest(r)
+	if err != nil {
+		return err
+	}
+	if !d.Equals(gotDigest, algorithm) {
+		return fmt.Errorf("content does not match digest: expected %s (%d bytes), got %s (%d bytes)", d.Hex(algorithm), d.SizeBytes, gotDigest.Hex(algorithm), gotDigest.SizeBytes)
+	}
+	return nil
 }
 
 func (d Digest) ZeroSized(algorithm Algorithm) bool {
@@ -395,12 +410,52 @@ func (a Algorithm) SizeBytes() int {
 	panic("unsupported algorithm")
 }
 
+func (a Algorithm) Hasher() hash.Hash {
+	switch a {
+	case SHA256:
+		return sha256.New()
+	case SHA384:
+		return sha512.New384()
+	case SHA512:
+		return sha512.New()
+	case Blake3:
+		panic("blake3 not implemented - it should be implemented in the future :)")
+	}
+	// Should be unreachable.
+	panic("unsupported algorithm")
+}
+
+func (a Algorithm) CalculateDigest(r io.Reader) (Digest, error) {
+	hasher := a.Hasher()
+	n, err := io.Copy(hasher, r)
+	if err != nil {
+		return Digest{}, err
+	}
+	return NewDigest(hasher.Sum(nil), n, a), nil
+}
+
+func SupportedAlgorithms() iter.Seq[Algorithm] {
+	return func(yield func(Algorithm) bool) {
+		if !yield(SHA256) {
+			return
+		}
+		if !yield(SHA384) {
+			return
+		}
+		if !yield(SHA512) {
+			return
+		}
+		if !yield(Blake3) {
+			return
+		}
+	}
+}
+
 var (
-	SHA256          Algorithm = Algorithm{"sha256"}
-	SHA384          Algorithm = Algorithm{"sha384"}
-	SHA512          Algorithm = Algorithm{"sha512"}
-	Blake3          Algorithm = Algorithm{"blake3"}
-	KnownAlgorithms           = []Algorithm{SHA256, SHA384, SHA512, Blake3}
+	SHA256 Algorithm = Algorithm{"sha256"}
+	SHA384 Algorithm = Algorithm{"sha384"}
+	SHA512 Algorithm = Algorithm{"sha512"}
+	Blake3 Algorithm = Algorithm{"blake3"}
 )
 
 var (

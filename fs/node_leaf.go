@@ -38,7 +38,7 @@ func (l *leaf) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 		// TODO: think about a better way to handle this.
 		panic("digest uninitialized in Getattr - this should never happen but is a temporary restriction")
 	}
-	out.Mode = modeRegularReadonly
+	out.Mode = l.manifestNode.Mode()
 	// TODO: should ctime be the same as mtime?
 	out.SetTimes(nil, &root.mtime, &root.mtime)
 	out.Size = uint64(l.digest.SizeBytes)
@@ -148,31 +148,27 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 	// TODO: support non-blocking io (O_NONBLOCK, O_NDELAY)
 	root := l.Root().Operations().(*root)
 
-	switch {
-	case flags&syscall.O_ACCMODE != syscall.O_RDONLY,
-		flags&syscall.O_TRUNC != 0,
-		flags&syscall.O_APPEND != 0,
-		flags&syscall.O_CREAT != 0,
-		flags&syscall.O_EXCL != 0:
-		// only support read-only access
-		return nil, 0, syscall.EACCES
+	var supportedFlags uint32 = FMODE_READ | FMODE_LSEEK | FMODE_PREAD | FMODE_EXEC | FMODE_NOCMTIME | FMODE_RANDOM | FMODE_ATOMIC_POS
+	var allowedAccess uint32 = FMODE_READ
+	if l.manifestNode.Executable {
+		allowedAccess |= FMODE_EXEC
 	}
 
-	// syscall.O_LARGEFILE is 0x0 on x86_64, but the kernel
-	// supplies 0x8000 anyway, except on mips64el, where 0x8000 is
-	// used for O_DIRECT.
-	const explicitLargeFileFlag = 0x8000
-	supportedFlags := uint32(syscall.O_RDONLY | syscall.O_LARGEFILE | explicitLargeFileFlag | syscall.O_NOATIME | syscall.O_NOFOLLOW)
 	unsupportedFlags := flags &^ supportedFlags
 	if unsupportedFlags != 0 {
 		return nil, 0, syscall.EINVAL
+	}
+
+	if (flags&FMODE_ACCESS)&^allowedAccess != 0 {
+		// only support read-only access
+		return nil, 0, syscall.EACCES
 	}
 
 	if l.digest.Uninitialized() {
 		// for now, we assume that "Lookup" on the parent must have initialized the digest
 		// and we don't try to fetch here.
 		// TODO: think about a better way to handle this.
-		return nil, 0, syscall.EIO
+		panic("digest uninitialized in Open - this should never happen but is a temporary restriction")
 	}
 
 	asset := l.toAsset()
@@ -185,7 +181,7 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 	}
 
 	// TODO: properly initialize the file handle if needed
-	reader, err := root.prefetcher.RandomAccessStream(ctx, asset)
+	reader, err := root.prefetcher.RandomAccessStream(ctx, asset, 0, 0)
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok {
 			return nil, 0, errno

@@ -11,6 +11,7 @@ import (
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -19,6 +20,17 @@ import (
 // See also: https://raw.githubusercontent.com/bazelbuild/remote-apis/refs/tags/v2.11.0-rc2/build/bazel/remote/asset/v1/remote_asset.proto
 type RemoteAssetService struct {
 	client remoteasset_proto.FetchClient
+}
+
+func NewRemote(target string, opts ...grpc.DialOption) (*RemoteAssetService, error) {
+	conn, err := protohelper.Client(target, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RemoteAssetService{
+		client: remoteasset_proto.NewFetchClient(conn),
+	}, nil
 }
 
 func (r *RemoteAssetService) FetchBlob(

@@ -2,6 +2,7 @@ package cas
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/tweag/asset-fuse/integrity"
@@ -34,7 +35,7 @@ type Reader interface {
 
 type Writer interface {
 	BatchUpdateBlobs(ctx context.Context, blobData DigestsAndData, digestFunction integrity.Algorithm) (BatchUpdateBlobsResponse, error)
-	WriteStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset int64) (io.WriteCloser, error)
+	WriteStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm) (io.WriteCloser, error)
 }
 
 // RandomAccessStream is an interface for reading blobs at arbitrary offsets (random accesss via ReadAt).
@@ -49,11 +50,18 @@ type ReaderAtCloser interface {
 	io.Closer
 }
 
+type WriterAtCloser interface {
+	io.Writer
+	io.WriterAt
+	io.Closer
+}
+
 type BatchReadBlobsResponse []ReadBlobsResponse
 
 type ReadBlobsResponse struct {
 	Digest integrity.Digest
 	Data   []byte
+	Status status.Status
 	// TODO: handle compression (for now we just assume that the data is not compressed)
 }
 
@@ -78,3 +86,5 @@ type DigestAndData struct {
 }
 
 type DigestsAndData []DigestAndData
+
+var BatchResponseHasNonZeroStatus = errors.New("Batch response has non-zero status")

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"syscall"
 
 	"github.com/tweag/asset-fuse/integrity"
 )
@@ -73,6 +74,8 @@ type ManifestEntry struct {
 	// Otherwise, the size can be determined after fetching the artifact.
 	// You can also use an integrity hash h = hash("") to represent an empty file.
 	Size *int64 `json:"size,omitempty"`
+	// Executable marks the file as executable.
+	Executable bool `json:"executable,omitempty"`
 }
 
 func (e *ManifestEntry) getIntegrity() ([]string, error) {
@@ -97,7 +100,16 @@ type Leaf struct {
 	// If provided, the size can be returned to the client before the artifact is fetched.
 	// Otherwise, the size can be determined after fetching the artifact.
 	// A negative value indicates that the size is unknown.
-	SizeHint int64
+	SizeHint   int64
+	Executable bool
+}
+
+func (l *Leaf) Mode() uint32 {
+	var mode uint32 = modeRegularReadonly
+	if l.Executable {
+		mode |= 0o111
+	}
+	return mode
 }
 
 type Directory struct {
@@ -105,6 +117,10 @@ type Directory struct {
 	// The name must be a valid directory entry name (no "/" or "\0").
 	// The child node can be a directory or a leaf.
 	Children map[string]any
+}
+
+func (d *Directory) Mode() uint32 {
+	return syscall.S_IFDIR | 0o555
 }
 
 type ManifestTree struct {
@@ -190,3 +206,12 @@ var (
 	insertionPathConflictError        = errors.New("insertion path conflicts with existing entry")
 	insertingPathConflictAndKindError = errors.New("insertion path conflicts with existing entry (which is a directory)")
 )
+
+// modeRegularReadonly is the mode for regular files that are read-only.
+// This sets the r bit for all users.
+const modeRegularReadonly = syscall.S_IFREG | 0o444
+
+// modeDirReadonly is the mode for directories that are read-only
+// This sets the r and x bits for all users,
+// which is needed to "cd" into the directory and list its contents.
+const modeDirReadonly = syscall.S_IFDIR | 0o555

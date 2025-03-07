@@ -41,7 +41,7 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 	case *manifest.Directory:
 		// child is a readonly directory
 		ops = &dirent{manifestNode: child}
-		out.Mode = modeDirReadonly
+		out.Mode = child.Mode()
 		stableAttr.Mode = syscall.S_IFDIR
 		out.SetAttrTimeout(direntTTL)
 		out.SetEntryTimeout(direntTTL)
@@ -66,7 +66,7 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 			// Otherwise, we need to fetch the asset.
 			digest: integrity.NewDigest(checksum.Hash, child.SizeHint, checksum.Algorithm),
 		}
-		out.Mode = modeRegularReadonly
+		out.Mode = child.Mode()
 		out.Size = uint64(child.SizeHint)
 		out.Blocks = (out.Size + 511) / 512
 
@@ -85,8 +85,8 @@ func (n *dirent) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	// preallocate the slice to contain all children, plus "." and ".."
 	var entries []fuse.DirEntry = make([]fuse.DirEntry, 0, len(n.manifestNode.Children)+2)
 	entries = append(entries,
-		fuse.DirEntry{Name: ".", Mode: modeDirReadonly},
-		fuse.DirEntry{Name: "..", Mode: modeDirReadonly},
+		fuse.DirEntry{Name: ".", Mode: n.Mode()},
+		fuse.DirEntry{Name: "..", Mode: n.Mode()},
 	)
 
 	// sort the names to ensure a deterministic order
@@ -98,11 +98,11 @@ func (n *dirent) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 	for _, name := range names {
 		var mode uint32
-		switch n.manifestNode.Children[name].(type) {
+		switch child := n.manifestNode.Children[name].(type) {
 		case *manifest.Directory:
-			mode = modeDirReadonly
+			mode = child.Mode()
 		case *manifest.Leaf:
-			mode = modeRegularReadonly
+			mode = child.Mode()
 		default:
 			return nil, syscall.EIO
 		}
@@ -117,7 +117,7 @@ func (n *dirent) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 func (n *dirent) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	root := n.Root().Operations().(*root)
-	out.Mode = modeDirReadonly
+	out.Mode = n.manifestNode.Mode()
 	out.SetTimes(nil, &root.mtime, &root.mtime)
 	out.SetTimeout(direntTTL)
 	return 0

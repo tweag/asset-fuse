@@ -37,9 +37,10 @@ func defaultTreeView(manifest Manifest, _ integrity.Algorithm) (ManifestTree, er
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
 		}
 		leaf := Leaf{
-			URIs:      entry.URIs,
-			Integrity: leafIntegrity,
-			SizeHint:  -1,
+			URIs:       entry.URIs,
+			Integrity:  leafIntegrity,
+			SizeHint:   -1,
+			Executable: entry.Executable,
 		}
 		if entry.Size != nil {
 			leaf.SizeHint = *entry.Size
@@ -65,8 +66,10 @@ func uriTreeView(manifest Manifest, _ integrity.Algorithm) (ManifestTree, error)
 		}
 		for _, uri := range entry.URIs {
 			leaf := Leaf{
-				URIs:      []string{uri},
-				Integrity: leafIntegrity,
+				URIs:       []string{uri},
+				Integrity:  leafIntegrity,
+				SizeHint:   -1,
+				Executable: entry.Executable,
 			}
 			if entry.Size != nil {
 				leaf.SizeHint = *entry.Size
@@ -136,8 +139,9 @@ func casView(manifest Manifest, templateStr string, onlyPrimaryAlgorithm bool, d
 			leafInfo, ok := pathsToCreateWithURIs[checksum.Algorithm][digest]
 			if !ok {
 				pathsToCreateWithURIs[checksum.Algorithm][digest] = casViewLeafInfo{
-					URIs:     []string{},
-					SizeHint: sizeBytes,
+					URIs:       []string{},
+					SizeHint:   sizeBytes,
+					Executable: entry.Executable,
 				}
 			}
 			leafInfo.URIs = append(leafInfo.URIs, entry.URIs...)
@@ -149,9 +153,10 @@ func casView(manifest Manifest, templateStr string, onlyPrimaryAlgorithm bool, d
 	for algorithm, digestsToURIs := range pathsToCreateWithURIs {
 		for digest, casViewLeafInfo := range digestsToURIs {
 			leaf := Leaf{
-				URIs:      casViewLeafInfo.URIs,
-				Integrity: integrity.IntegrityFromChecksums(integrity.ChecksumFromDigest(digest, algorithm)),
-				SizeHint:  casViewLeafInfo.SizeHint,
+				URIs:       casViewLeafInfo.URIs,
+				Integrity:  integrity.IntegrityFromChecksums(integrity.ChecksumFromDigest(digest, algorithm)),
+				SizeHint:   casViewLeafInfo.SizeHint,
+				Executable: casViewLeafInfo.Executable,
 			}
 			var pathBuilder strings.Builder
 			tpl.Execute(&pathBuilder, casViewTemplateData{
@@ -168,8 +173,9 @@ func casView(manifest Manifest, templateStr string, onlyPrimaryAlgorithm bool, d
 }
 
 type casViewLeafInfo struct {
-	URIs     []string
-	SizeHint int64
+	URIs       []string
+	SizeHint   int64
+	Executable bool
 }
 
 type casViewTemplateData struct {
