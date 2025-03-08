@@ -425,6 +425,23 @@ func (a Algorithm) Hasher() hash.Hash {
 	panic("unsupported algorithm")
 }
 
+// Identifier returns a unique byte identifier for the algorithm.
+// It is used internally to identify the algorithm for caching.
+func (a Algorithm) Identifier() byte {
+	switch a {
+	case SHA256:
+		return 0
+	case SHA384:
+		return 1
+	case SHA512:
+		return 2
+	case Blake3:
+		return 3
+	}
+	// Should be unreachable.
+	panic("unsupported algorithm")
+}
+
 func (a Algorithm) CalculateDigest(r io.Reader) (Digest, error) {
 	hasher := a.Hasher()
 	n, err := io.Copy(hasher, r)
