@@ -25,6 +25,13 @@ type GlobalConfig struct {
 	// Example: "grpcs://remote.buildbuddy.io"
 	// Example: "grpc://localhost:8980" (for unencrypted connections - not recommended)
 	Remote string `json:"remote,omitempty"`
+	// Let any read operations on regular files fail with EBADF.
+	// This is useful to test if prefetching and xattr optimizations are working with Buck2 and Bazel:
+	// When remote execution is used and the remote asset service is available,
+	// Buck2 and Bazel should read digests via xattr and never try to get file contents locally.
+	// Instead, they should always use the remote asset service to fetch the file contents directly
+	// from the internet into the remote CAS.
+	FailReads *bool `json:"fail_reads,omitempty"`
 	// Emits debug information about the FUSE filesystem.
 	FUSEDebug *bool `json:"fuse_debug,omitempty"`
 	// Log level. One of "error", "warning", "basic", "debug".
@@ -88,6 +95,7 @@ func DefaultConfig() GlobalConfig {
 		// TODO: remove this default value
 		// Pointing at a SaaS service is not a good default.
 		Remote:    "grpcs://remote.buildbuddy.io",
+		FailReads: nil,
 		FUSEDebug: nil,
 		LogLevel:  "info",
 	}

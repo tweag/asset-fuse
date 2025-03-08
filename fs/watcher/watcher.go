@@ -54,7 +54,11 @@ func New(view manifest.View, config api.GlobalConfig, prefetcher *prefetcher.Pre
 	if err != nil {
 		return nil, nil, err
 	}
-	root := fs.Root(initialManifest, digestFunction, time.Now(), config.DigestXattrName, prefetcher)
+	var failReads bool
+	if config.FailReads != nil {
+		failReads = *config.FailReads
+	}
+	root := fs.Root(initialManifest, digestFunction, time.Now(), config.DigestXattrName, failReads, prefetcher)
 
 	return &ManifestWatcher{
 		manifestPath:   config.ManifestPath,

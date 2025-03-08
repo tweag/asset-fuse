@@ -29,12 +29,15 @@ type root struct {
 	// In addition, we always support the "user." prefix for Buck2.
 	digestHashXattrName string
 
+	// whether to fail reads on leaf nodes
+	failReads bool
+
 	prefetcher *prefetcher.Prefetcher
 }
 
 func Root(
 	manifestTree manifest.ManifestTree,
-	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string,
+	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string, failReads bool,
 	prefetcher *prefetcher.Prefetcher,
 ) *root {
 	return &root{
@@ -44,6 +47,7 @@ func Root(
 		digestAlgorithm:     digestAlgorithm,
 		mtime:               mtime,
 		digestHashXattrName: digestHashAttributeName,
+		failReads:           failReads,
 		prefetcher:          prefetcher,
 	}
 }

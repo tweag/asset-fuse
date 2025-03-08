@@ -191,8 +191,9 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		return nil, 0, syscall.EIO
 	}
 	return &leafHandle{
-		reader: reader,
-		inode:  l,
+		failReads: root.failReads,
+		reader:    reader,
+		inode:     l,
 	}, 0, 0
 }
 
@@ -212,6 +213,7 @@ func (l *leaf) toAsset() api.Asset {
 
 type leafHandle struct {
 	// TODO: think about concurrency / mutexes for every method in leafHandle
+	failReads bool
 
 	// TODO: io.ReaderAt assumes random access to the data.
 	// We should think about how to handle sequential reads and prefetching.
@@ -226,6 +228,15 @@ func (h *leafHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.Rea
 	// - read disabled (this ensures that data will only be accessed via the CAS and never downloaded locally)
 	// - read enabled (this ensures that data will materialized when read)
 	// For now, we assume that reading is allowed and we materialize the data.
+
+	if h.failReads && len(dest) > 0 {
+		// This is useful to test if prefetching and xattr optimizations are working with Buck2 and Bazel:
+		// When remote execution is used and the remote asset service is available,
+		// Buck2 and Bazel should read digests via xattr and never try to get file contents locally.
+		// Instead, they should always use the remote asset service to fetch the file contents directly
+		// from the internet into the remote CAS.
+		return nil, syscall.EBADF
+	}
 
 	// TODO: handle blocking and non-blocking reads (for now, we assume that reads are blocking)
 	n, err := h.reader.ReadAt(dest, off)

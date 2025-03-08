@@ -67,6 +67,7 @@ type flagConfig struct {
 	api.GlobalConfig
 	// redefine any bool flags to satisfy flagset.BoolVar
 	FUSEDebug bool
+	FailReads bool
 }
 
 func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
@@ -83,7 +84,8 @@ func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
 	}
 	if preset&FlagPresetFUSE != 0 {
 		flagSet.StringVar(&config.DigestXattrName, "unix_digest_hash_attribute_name", "", `Name of the extended attribute (xattr) used to store the digest of a file. Default: "user.<digest_function>"`)
-		flagSet.BoolVar(&config.FUSEDebug, "fuse_debug", false, "Emits debug information about the FUSE filesystem")
+		flagSet.BoolVar(&config.FailReads, "fail_reads", false, "Emits debug information about the FUSE filesystem")
+		flagSet.BoolVar(&config.FUSEDebug, "fuse_debug", false, "Let any read operations on regular files fail with EBADF")
 	}
 	return config
 }
@@ -110,6 +112,9 @@ func InjectGlobalFlagsAndConfigure(args []string, flagSet *flag.FlagSet, preset 
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "fuse_debug" {
 			flagConfig.GlobalConfig.FUSEDebug = &flagConfig.FUSEDebug
+		}
+		if f.Name == "fail_reads" {
+			flagConfig.GlobalConfig.FailReads = &flagConfig.FailReads
 		}
 	})
 
