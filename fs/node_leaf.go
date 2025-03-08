@@ -12,6 +12,7 @@ import (
 	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 )
 
 // leaf is a regular file in the filesystem.
@@ -52,7 +53,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 
 	var digest integrity.Digest
 	var algorithm integrity.Algorithm
-	if attr == root.digestHashXattrName {
+	if len(root.digestHashXattrName) > 0 && attr == root.digestHashXattrName {
 		digest = l.digest
 		algorithm = root.digestAlgorithm
 	} else if !strings.HasPrefix(attr, "user.") {
@@ -61,8 +62,9 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	} else {
 		// fallback: check for to the "user." prefix for Buck2
 		algorithmName := strings.TrimPrefix(attr, "user.")
-		algorithm, ok := integrity.AlgorithmFromString(algorithmName)
-		if !ok {
+		var validAlgorithm bool
+		algorithm, validAlgorithm = integrity.AlgorithmFromString(algorithmName)
+		if !validAlgorithm {
 			// unsupported attribute name
 			return 0, syscall.ENODATA
 		}
@@ -73,7 +75,6 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 		}
 		// TODO: this reaches into l.digest internals - is this ok?
 		digest = integrity.NewDigest(checksum.Hash, l.digest.SizeBytes, checksum.Algorithm)
-		algorithm = checksum.Algorithm
 	}
 
 	// Someone is trying to read the digest hash via xattr.
@@ -82,7 +83,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	// This way, remote execution can magically use this file as an action input (without us uploading it to the remote cache).
 	// TODO: make this configurable and non-blocking.
 	if err := root.prefetcher.Prefetch(ctx, l.toAsset()); err != nil {
-		panic("prefetch failed - this should be handled gracefully, but is a temporary restriction")
+		logging.Warningf("prefetch failed: %v", err)
 	}
 
 	var destSizeBytes uint32 = uint32(algorithm.SizeBytes())
@@ -148,7 +149,7 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 	// TODO: support non-blocking io (O_NONBLOCK, O_NDELAY)
 	root := l.Root().Operations().(*root)
 
-	var supportedFlags uint32 = FMODE_READ | FMODE_LSEEK | FMODE_PREAD | FMODE_EXEC | FMODE_NOCMTIME | FMODE_RANDOM | FMODE_ATOMIC_POS
+	var supportedFlags uint32 = FMODE_READ | FMODE_LSEEK | FMODE_PREAD | FMODE_EXEC | FMODE_NOCMTIME | FMODE_RANDOM | FMODE_ATOMIC_POS | FMODE_CAN_READ
 	var allowedAccess uint32 = FMODE_READ
 	if l.manifestNode.Executable {
 		allowedAccess |= FMODE_EXEC
