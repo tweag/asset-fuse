@@ -2,13 +2,13 @@ package protohelper
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/tweag/asset-fuse/auth/grpcheaderinterceptor"
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 	"github.com/tweag/asset-fuse/service/status"
 	gstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
@@ -88,7 +88,7 @@ func warnUnencryptedGRPC(uri string) {
 		return
 	}
 	WarnedURIs[uri] = struct{}{}
-	fmt.Fprintf(os.Stderr, "WARNING: using unencrypted grpc connection to %s - please consider using grpcs instead\n", uri)
+	logging.Warningf("WARNING: using unencrypted grpc connection to %s - please consider using grpcs instead", uri)
 }
 
 // WarnedURIs is a set of URIs that have already been warned about.

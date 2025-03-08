@@ -1,66 +1,23 @@
 package main
 
 import (
+	"context"
 	"os"
-	"time"
 
-	goFUSEfs "github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/tweag/asset-fuse/fs"
-	"github.com/tweag/asset-fuse/fs/manifest"
-	"github.com/tweag/asset-fuse/integrity"
-	"github.com/tweag/asset-fuse/service/asset"
-	"github.com/tweag/asset-fuse/service/cas"
-	"github.com/tweag/asset-fuse/service/downloader"
-	"github.com/tweag/asset-fuse/service/prefetcher"
+	"github.com/tweag/asset-fuse/cmd/root"
 )
 
+// TODO:
+// - add flag handling
+// - add logging
+// - add subcommands for different operations
+//   - `asset-fuse mount` to mount the filesystem
+//   - `asset-fuse serve` to start a (local) unix domain socket server
+//   - `asset-fuse add` to add a file to the manifest
+//   - `asset-fuse get` to fetch uri(s) (thereby populating the [remote and/or local] cache with the asset(s), or simply to check if the asset is available and get the digest)
+//   - `asset-fuse put` to push a file to the remote asset service
+//   - `asset-fuse prefetch` to prefetch all assets in the manifest
+//   - `asset-fuse vendor` to copy all assets in the manifest to a directory or archive (for offline use without the asset-fuse filesystem)
 func main() {
-	manifestFile, err := os.Open("manifest.json")
-	if err != nil {
-		panic(err)
-	}
-	defer manifestFile.Close()
-
-	view, ok := manifest.ViewFromString("default")
-	if !ok {
-		panic("unknown view")
-	}
-	manifest, err := manifest.TreeFromManifest(manifestFile, view, integrity.SHA256)
-	if err != nil {
-		panic(err)
-	}
-
-	diskCache, err := cas.NewDisk("/home/malte/.cache/asset-fuse")
-	if err != nil {
-		panic(err)
-	}
-	remoteCache, err := cas.NewRemote("grpcs://remote.buildbuddy.io")
-	if err != nil {
-		panic(err)
-	}
-	remoteAsset, err := asset.NewRemote("grpcs://remote.buildbuddy.io")
-	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, integrity.SHA256)
-
-	opts := goFUSEfs.Options{
-		// We probably want different timeouts, depending
-		// on whether we allow live-reloading of the manifest
-		// or not.
-		EntryTimeout: &defaultGoFUSETimeout,
-		AttrTimeout:  &defaultGoFUSETimeout,
-		// TODO: set good default mount options
-		MountOptions: fuse.MountOptions{
-			Debug: true,
-		},
-	}
-	root := fs.Root(manifest, integrity.SHA256, time.Now(), "", prefetcher)
-
-	server, err := goFUSEfs.Mount(os.Args[1], root, &opts)
-	if err != nil {
-		panic(err)
-	}
-
-	server.Wait()
+	root.Run(context.Background(), os.Args)
 }
-
-var defaultGoFUSETimeout = time.Second
