@@ -188,7 +188,7 @@ func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algo
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
-		return ManifestTree{}, err
+		return ManifestTree{}, ManifestDecodeError{Inner: err}
 	}
 	if err := manifest.validate(); err != nil {
 		return ManifestTree{}, err
@@ -199,6 +199,14 @@ func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algo
 	// - uri: render leafs using their URIs
 	// - cas: render leafs using their (hex) digest with modes: [repository_cache, remote_cache, nix_store, (docker / oci image blobs)]
 	return view.Tree(manifest, digestFunction)
+}
+
+type ManifestDecodeError struct {
+	Inner error
+}
+
+func (e ManifestDecodeError) Error() string {
+	return e.Inner.Error()
 }
 
 var (

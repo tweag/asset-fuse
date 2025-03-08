@@ -133,6 +133,11 @@ func (n *dirent) Listxattr(ctx context.Context, dest []byte) (uint32, syscall.Er
 	return 0, 0
 }
 
+// This function is used during manifest reloads.
+func (n *dirent) UpdateManifest(manifestNode *manifest.Directory) {
+	n.manifestNode = manifestNode
+}
+
 // directory entries are completely virtual and
 // depend only on information in the manifest
 // so we can set a long TTL

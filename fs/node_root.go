@@ -27,7 +27,7 @@ type root struct {
 	// the name of the extended attribute of leaf nodes that holds the digest hash
 	// This should be the same as "--unix_digest_hash_attribute_name" in Bazel.
 	// In addition, we always support the "user." prefix for Buck2.
-	digestHashAttributeName string
+	digestHashXattrName string
 
 	prefetcher *prefetcher.Prefetcher
 }
@@ -41,11 +41,15 @@ func Root(
 		dirent: dirent{
 			manifestNode: manifestTree.Root,
 		},
-		digestAlgorithm:         digestAlgorithm,
-		mtime:                   mtime,
-		digestHashAttributeName: digestHashAttributeName,
-		prefetcher:              prefetcher,
+		digestAlgorithm:     digestAlgorithm,
+		mtime:               mtime,
+		digestHashXattrName: digestHashAttributeName,
+		prefetcher:          prefetcher,
 	}
+}
+
+func (r *root) UpdateMtime(mtime time.Time) {
+	r.mtime = mtime
 }
 
 // ensure root type embeds fs.Inode

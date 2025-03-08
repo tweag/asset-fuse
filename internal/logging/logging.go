@@ -46,28 +46,28 @@ func FromString(s string) LogLevel {
 
 func Debugf(format string, args ...any) {
 	if level >= LogLevelDebug {
-		fPrintOut(format, args...)
+		fPrintStderr(format, args...)
 	}
 }
 
 func Warningf(format string, args ...any) {
 	if level >= LogLevelWarning {
-		fPrintOut(format, args...)
+		fPrintStderr(format, args...)
 	}
 }
 
 func Basicf(format string, args ...any) {
 	if level >= LogLevelBasic {
-		fPrintOut(format, args...)
+		fPrintStderr(format, args...)
 	}
 }
 
 func Errorf(format string, args ...any) {
-	fPrintOut(format, args...)
+	fPrintStderr(format, args...)
 }
 
 func Fatalf(format string, args ...any) {
-	fPrintOut(format, args...)
+	fPrintStderr(format, args...)
 	os.Exit(1)
 }
 
@@ -81,13 +81,14 @@ func boundedLogLevel(numericLevel int) LogLevel {
 	return LogLevel(numericLevel)
 }
 
-func fPrintOut(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, fmtWithNewline(format), args...)
+func fPrintStderr(format string, args ...any) {
+	fmt.Fprint(os.Stderr, fmtWithNewline(format, args...))
 }
 
-func fmtWithNewline(format string) string {
-	if !strings.HasSuffix(format, "\n") {
-		return format + "\n"
+func fmtWithNewline(format string, args ...any) string {
+	out := fmt.Sprintf(format, args...)
+	if !strings.HasSuffix(out, "\n") {
+		return out + "\n"
 	}
-	return format
+	return out
 }

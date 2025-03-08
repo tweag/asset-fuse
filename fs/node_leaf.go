@@ -52,7 +52,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 
 	var digest integrity.Digest
 	var algorithm integrity.Algorithm
-	if attr == root.digestHashAttributeName {
+	if attr == root.digestHashXattrName {
 		digest = l.digest
 		algorithm = root.digestAlgorithm
 	} else if !strings.HasPrefix(attr, "user.") {
@@ -114,8 +114,8 @@ func (l *leaf) Listxattr(ctx context.Context, dest []byte) (uint32, syscall.Errn
 	for integrityForAlgorithm := range l.manifestNode.Integrity.Items() {
 		supportedAttributes = append(supportedAttributes, "user."+integrityForAlgorithm.Algorithm.String())
 	}
-	if len(root.digestHashAttributeName) > 0 && !slices.Contains(supportedAttributes, root.digestHashAttributeName) {
-		supportedAttributes = append(supportedAttributes, root.digestHashAttributeName)
+	if len(root.digestHashXattrName) > 0 && !slices.Contains(supportedAttributes, root.digestHashXattrName) {
+		supportedAttributes = append(supportedAttributes, root.digestHashXattrName)
 	}
 
 	// calculate the total size of the attribute names
@@ -193,6 +193,11 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		reader: reader,
 		inode:  l,
 	}, 0, 0
+}
+
+// This function is used during manifest reloads.
+func (n *leaf) UpdateManifest(manifestNode *manifest.Leaf) {
+	n.manifestNode = manifestNode
 }
 
 func (l *leaf) toAsset() api.Asset {

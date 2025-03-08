@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tweag/asset-fuse/api"
+	"github.com/tweag/asset-fuse/internal/logging"
 )
 
 func FatalFmt(format string, args ...any) {
@@ -81,6 +82,7 @@ func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
 		flagSet.StringVar(&config.Remote, "remote", "", "grpc(s) endpoint of the REAPI server")
 	}
 	if preset&FlagPresetFUSE != 0 {
+		flagSet.StringVar(&config.DigestXattrName, "unix_digest_hash_attribute_name", "", `Name of the extended attribute (xattr) used to store the digest of a file. Default: "user.<digest_function>"`)
 		flagSet.BoolVar(&config.FUSEDebug, "fuse_debug", false, "Emits debug information about the FUSE filesystem")
 	}
 	return config
@@ -121,6 +123,7 @@ func InjectGlobalFlagsAndConfigure(args []string, flagSet *flag.FlagSet, preset 
 		return api.GlobalConfig{}, err
 	}
 
+	logging.SetLevel(logging.FromString(config.LogLevel))
 	return config, config.Validate()
 }
 

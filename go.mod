@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/bazelbuild/remote-apis v0.0.0-20250211041012-7f922028fcfa
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20250303144028-a0af3efb3deb
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142

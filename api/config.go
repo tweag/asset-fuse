@@ -13,6 +13,8 @@ type GlobalConfig struct {
 	// DigestFunction is the hash function used to compute the digest of a file.
 	// It is also used by the remote- and local CAS to reference blobs.
 	DigestFunction string `json:"digest_function,omitempty"`
+	// Name of the extended attribute (xattr) used to store the digest of a file.
+	DigestXattrName string `json:"unix_digest_hash_attribute_name,omitempty"`
 	// The path to the manifest file.
 	ManifestPath string `json:"manifest_path,omitempty"`
 	// The path to the local (disk) cache directory.
@@ -79,9 +81,10 @@ func ReadConfig(reader ConfigReader, config GlobalConfig) (GlobalConfig, error) 
 
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
-		DigestFunction: "sha256",
-		ManifestPath:   "manifest.json",
-		DiskCachePath:  "~/.cache/asset-fuse",
+		DigestFunction:  "sha256",
+		DigestXattrName: "", // disable custom name by default
+		ManifestPath:    "manifest.json",
+		DiskCachePath:   "~/.cache/asset-fuse",
 		// TODO: remove this default value
 		// Pointing at a SaaS service is not a good default.
 		Remote:    "grpcs://remote.buildbuddy.io",
