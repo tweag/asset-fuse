@@ -13,7 +13,7 @@ import (
 // View describes a view onto the manifest.
 type View struct {
 	name          string
-	treeGenerator func(Manifest, integrity.Algorithm) (ManifestTree, error)
+	treeGenerator func(ManifestPaths, integrity.Algorithm) (ManifestTree, error)
 }
 
 func ViewFromString(name string) (View, bool) {
@@ -21,13 +21,13 @@ func ViewFromString(name string) (View, bool) {
 	return v, ok
 }
 
-func (v View) Tree(manifest Manifest, digestFunction integrity.Algorithm) (ManifestTree, error) {
-	return v.treeGenerator(manifest, digestFunction)
+func (v View) Tree(paths ManifestPaths, digestFunction integrity.Algorithm) (ManifestTree, error) {
+	return v.treeGenerator(paths, digestFunction)
 }
 
-func defaultTreeView(manifest Manifest, _ integrity.Algorithm) (ManifestTree, error) {
+func defaultTreeView(paths ManifestPaths, _ integrity.Algorithm) (ManifestTree, error) {
 	tree := NewTree()
-	for path, entry := range manifest {
+	for path, entry := range paths {
 		sriList, err := entry.getIntegrity()
 		if err != nil {
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
@@ -53,9 +53,9 @@ func defaultTreeView(manifest Manifest, _ integrity.Algorithm) (ManifestTree, er
 	return tree, nil
 }
 
-func uriTreeView(manifest Manifest, _ integrity.Algorithm) (ManifestTree, error) {
+func uriTreeView(paths ManifestPaths, _ integrity.Algorithm) (ManifestTree, error) {
 	tree := NewTree()
-	for path, entry := range manifest {
+	for path, entry := range paths {
 		sriList, err := entry.getIntegrity()
 		if err != nil {
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
@@ -102,12 +102,12 @@ func pathForURIView(uri string) (string, bool) {
 	return "", false
 }
 
-func casView(manifest Manifest, templateStr string, onlyPrimaryAlgorithm bool, digestFunction integrity.Algorithm) (ManifestTree, error) {
+func casView(paths ManifestPaths, templateStr string, onlyPrimaryAlgorithm bool, digestFunction integrity.Algorithm) (ManifestTree, error) {
 	tpl := template.Must(template.New("casView").Parse(templateStr))
 
 	tree := NewTree()
 	pathsToCreateWithURIs := map[integrity.Algorithm]map[integrity.Digest]casViewLeafInfo{}
-	for path, entry := range manifest {
+	for path, entry := range paths {
 		sriList, err := entry.getIntegrity()
 		if err != nil {
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
@@ -186,11 +186,11 @@ type casViewTemplateData struct {
 var (
 	defaultView         = View{name: "default", treeGenerator: defaultTreeView}
 	uriView             = View{name: "uri", treeGenerator: uriTreeView}
-	repositoryCacheView = View{name: "repository_cache", treeGenerator: func(manifest Manifest, digestFunction integrity.Algorithm) (ManifestTree, error) {
-		return casView(manifest, "content_addressable/{{ .Algorithm }}/{{ .DigestHex }}/file", false, digestFunction)
+	repositoryCacheView = View{name: "repository_cache", treeGenerator: func(paths ManifestPaths, digestFunction integrity.Algorithm) (ManifestTree, error) {
+		return casView(paths, "content_addressable/{{ .Algorithm }}/{{ .DigestHex }}/file", false, digestFunction)
 	}}
-	diskCacheView = View{name: "bazel_disk_cache", treeGenerator: func(manifest Manifest, digestFunction integrity.Algorithm) (ManifestTree, error) {
-		return casView(manifest, `cas/{{ printf "%.2s" .DigestHex }}/{{ .DigestHex }}`, true, digestFunction)
+	diskCacheView = View{name: "bazel_disk_cache", treeGenerator: func(paths ManifestPaths, digestFunction integrity.Algorithm) (ManifestTree, error) {
+		return casView(paths, `cas/{{ printf "%.2s" .DigestHex }}/{{ .DigestHex }}`, true, digestFunction)
 	}}
 )
 

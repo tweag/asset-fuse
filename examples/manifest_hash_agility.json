@@ -1,0 +1,33 @@
+{
+  "paths": {
+    "src/glob.go": {
+      "uris": ["https://research.swtch.com/glob.go"],
+      "integrity": [
+        "sha256-MgVgyoTIpgiyKd5ahOQPwcqZgp1MPlLDkNuer0+z8pE=",
+        "sha384-29vOWFwIfypCjO5d9w75PmSNXxoOZKks8T0MjhVcLvQF4nqUBAvkhN56SO0d7bKK"
+      ],
+      "size": 2727
+    },
+    "var/100MB.bin": {
+      "uris": ["https://ash-speed.hetzner.com/100MB.bin"],
+      "integrity": "sha512-YaadhAswlcxJbSCHJ1mUAUgNtBZfxGmNEXBGgS+Qvy+3cbmCsj1qo3DceLBXAxEw3fHQFMw7MmMPVL/O4blK9w==",
+      "size": 104857600
+    },
+    "bin/sha256sum": {
+      "uris": ["https://cosmo.zip/pub/cosmos/v/4.0.2/bin/sha256sum"],
+      "integrity": "sha256-ABL1gN60Mcos5o8Fjlgx4DfIaDnyjeWKbxl6JC6mKkw=",
+      "size": 834767,
+      "executable": true
+    },
+    "var/art001m1203451716.mp4": {
+      "uris": ["https://images-assets.nasa.gov/video/art001m1203451716/art001m1203451716~orig.mp4"],
+      "integrity": [
+        "blake3-Ede6DuK5Rig6KVVNfnqv98+lvcWyzR1dqODAAHD1wJc=",
+        "sha256-7ySYKmyP0BfSkNyZawGubv57HrQNGKho9r/mYT5N0Ew=",
+        "sha384-6SXGt7i258j1wg6xl5dkQtqDpdthVl5lvC+xk0kM2wCWW+W4APyoWTY4P1zLWNDN",
+        "sha512-zS1jKb/q0KNEw0cwAHhbpsds8F8VYwz4KPLvy3TrP1CmfW2fUKnxZ8K9dAH6XRWuuXiXhqVNuPnInEHorMXXAg=="
+      ],
+      "size": 3550370785
+    }
+  }
+}

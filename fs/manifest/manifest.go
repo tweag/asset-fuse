@@ -1,9 +1,13 @@
 package manifest
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/url"
+	"path"
 	"strings"
 	"syscall"
 
@@ -11,9 +15,49 @@ import (
 )
 
 // Manifest describes the JSON manifest file format.
-type Manifest map[string]ManifestEntry
+type Manifest struct {
+	Paths        ManifestPaths `json:"paths"`
+	URITemplates []string      `json:"uri_templates"`
+}
 
-func (m Manifest) validate() error {
+func (m *Manifest) process() ManifestPaths {
+	paths := make(ManifestPaths, len(m.Paths))
+	for path, entry := range m.Paths {
+		if len(entry.URIs) == 0 {
+			for _, uri := range m.URITemplates {
+				entry.URIs = append(entry.URIs, applyTemplateToEntry(uri, path, entry))
+			}
+		}
+		paths[path] = entry
+	}
+	return paths
+}
+
+func applyTemplateToEntry(template, entrypath string, entry ManifestEntry) string {
+	replacements := []string{
+		"{path}", entrypath,
+		"{path_urlencoded}", url.PathEscape(entrypath),
+		"{dirname}", path.Dir(entrypath),
+		"{basename}", path.Base(entrypath),
+		"{stem}", strings.TrimSuffix(path.Base(entrypath), path.Ext(entrypath)),
+		"{ext}", path.Ext(entrypath),
+	}
+	if entry.Size != nil {
+		replacements = append(replacements, "{size}", fmt.Sprintf("%d", *entry.Size))
+	}
+	integrityStrings, getIntegrityErr := entry.getIntegrity()
+	checksums, integrityFromStringErr := integrity.IntegrityFromString(integrityStrings...)
+	if getIntegrityErr == nil && integrityFromStringErr == nil {
+		for checksum := range checksums.Items() {
+			replacements = append(replacements, fmt.Sprintf("{%s}", checksum.Algorithm.String()), hex.EncodeToString(checksum.Hash))
+		}
+	}
+	return strings.NewReplacer(replacements...).Replace(template)
+}
+
+type ManifestPaths map[string]ManifestEntry
+
+func (m ManifestPaths) validate() error {
 	if len(m) == 0 {
 		return errors.New("empty manifest")
 	}
@@ -190,7 +234,8 @@ func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algo
 	if err := decoder.Decode(&manifest); err != nil {
 		return ManifestTree{}, ManifestDecodeError{Inner: err}
 	}
-	if err := manifest.validate(); err != nil {
+	paths := manifest.process()
+	if err := paths.validate(); err != nil {
 		return ManifestTree{}, err
 	}
 
@@ -198,7 +243,7 @@ func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algo
 	// - default: render leafs using their path
 	// - uri: render leafs using their URIs
 	// - cas: render leafs using their (hex) digest with modes: [repository_cache, remote_cache, nix_store, (docker / oci image blobs)]
-	return view.Tree(manifest, digestFunction)
+	return view.Tree(paths, digestFunction)
 }
 
 type ManifestDecodeError struct {

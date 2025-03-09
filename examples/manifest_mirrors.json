@@ -1,0 +1,31 @@
+{
+  "paths": {
+    "src/glob.go": {
+      "integrity": "sha256-MgVgyoTIpgiyKd5ahOQPwcqZgp1MPlLDkNuer0+z8pE=",
+      "size": 2727
+    },
+    "var/100MB.bin": {
+      "integrity": "sha256-KcG1gwTIqQZLdH4/MTMEp1uI++v+2vsydQBjZ/4gLfg=",
+      "size": 104857600
+    },
+    "bin/sha256sum": {
+      "integrity": "sha256-ABL1gN60Mcos5o8Fjlgx4DfIaDnyjeWKbxl6JC6mKkw=",
+      "size": 834767,
+      "executable": true
+    },
+    "you/can/opt/out/of/templates/for/individual/paths/by/specifying/uris/art001m1203451716.mp4": {
+      "uris": ["https://images-assets.nasa.gov/video/art001m1203451716/art001m1203451716~orig.mp4"],
+      "integrity": "sha256-7ySYKmyP0BfSkNyZawGubv57HrQNGKho9r/mYT5N0Ew=",
+      "size": 3550370785
+    }
+  },
+  "uri_templates": [
+    "https://cdn.acme.corp/{sha256}/{size}/{basename}",
+    "https://mirror01.acme.corp/{path}",
+    "https://mirror02.acme.corp/{path}",
+    "http://unencrypted.acme.corp/{dirname}/assets/{stem}_{size}{ext}",
+    "https://storage.googleapis.com/acme-bucket/{path_urlencoded}",
+    "https://acme-bucket.s3.amazonaws.com/{path}",
+    "https://acme.r2.cloudflarestorage.com/acme-bucket/{path}"
+  ]
+}

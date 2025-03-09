@@ -16,7 +16,7 @@ type GlobalConfig struct {
 	// Name of the extended attribute (xattr) used to store the digest of a file.
 	DigestXattrName string `json:"unix_digest_hash_attribute_name,omitempty"`
 	// The path to the manifest file.
-	ManifestPath string `json:"manifest_path,omitempty"`
+	ManifestPath string `json:"manifest,omitempty"`
 	// The path to the local (disk) cache directory.
 	DiskCachePath string `json:"disk_cache,omitempty"`
 	// The grpc(s) endpoint of the REAPI server,
@@ -50,7 +50,7 @@ func (c GlobalConfig) Validate() error {
 		issues = append(issues, `digest_function must be one of "sha256", "sha384", "sha512", "blake3"`)
 	}
 	if c.ManifestPath == "" {
-		issues = append(issues, `manifest_path must be provided`)
+		issues = append(issues, `manifest must be provided`)
 	}
 	if c.DiskCachePath == "" {
 		issues = append(issues, `disk_cache must be provided`)
