@@ -58,8 +58,7 @@ func (c GlobalConfig) Validate() error {
 	if c.Remote == "" {
 		// TODO: should we allow empty remote?
 		issues = append(issues, `remote must be provided`)
-	}
-	if !slices.Contains([]string{"grpcs", "grpc"}, strings.Split(c.Remote, "://")[0]) {
+	} else if !slices.Contains([]string{"grpcs", "grpc"}, strings.Split(c.Remote, "://")[0]) {
 		issues = append(issues, `remote must start with "grpcs://" or "grpc://"`)
 	}
 	switch c.LogLevel {

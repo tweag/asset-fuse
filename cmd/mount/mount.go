@@ -66,11 +66,24 @@ func Run(ctx context.Context, args []string) {
 	if err != nil {
 		cmdhelper.FatalFmt("creating disk cache at %s: %v", globalConfig.DiskCachePath, err)
 	}
-	remoteCache, err := cas.NewRemote("grpcs://remote.buildbuddy.io")
-	if err != nil {
-		cmdhelper.FatalFmt("creating remote cache at %s: %v", globalConfig.Remote, err)
+	var remoteCache *cas.Remote
+	var remoteAsset *asset.RemoteAssetService
+	if len(globalConfig.Remote) > 0 {
+		var err error
+		remoteCache, err = cas.NewRemote(globalConfig.Remote)
+		if err != nil {
+			cmdhelper.FatalFmt("creating remote cache at %s: %v", globalConfig.Remote, err)
+		}
+		remoteAsset, err = asset.NewRemote(globalConfig.Remote)
+		if err != nil {
+			cmdhelper.FatalFmt("creating remote asset service at %s: %v", globalConfig.Remote, err)
+		}
+	} else {
+		logging.Warningf("No REAPI server specified. Running in local mode.")
+		// TODO: instead of nil, use an implementation that returns an error for all operations
+		// to make sure that the code is not accidentally using the remote cache.
+		// Additionally, we can signal to the prefetcher that it should not try to fetch anything.
 	}
-	remoteAsset, err := asset.NewRemote("grpcs://remote.buildbuddy.io")
 	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, digestFunction)
 
 	logging.Basicf("Mounting %s at %s", globalConfig.ManifestPath, mountPoint)
