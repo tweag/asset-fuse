@@ -62,7 +62,7 @@ func (c GlobalConfig) Validate() error {
 		issues = append(issues, `remote must start with "grpcs://" or "grpc://"`)
 	}
 	switch c.LogLevel {
-	case "error", "warning", "basic", "debug": // allowed
+	case "", "error", "warning", "basic", "debug": // allowed
 	default:
 		issues = append(issues, `log_level must be one of "error", "warning", "basic", "debug"`)
 	}
@@ -96,6 +96,6 @@ func DefaultConfig() GlobalConfig {
 		Remote:    "grpcs://remote.buildbuddy.io",
 		FailReads: nil,
 		FUSEDebug: nil,
-		LogLevel:  "info",
+		LogLevel:  "basic",
 	}
 }

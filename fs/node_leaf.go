@@ -64,6 +64,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 			return 0, syscall.ENODATA
 		}
 	}
+	logging.Debugf("getxattr(%s, %s)", l.Path(l.Root()), attr)
 
 	csum, err := l.checksum(ctx, algorithm)
 	if err != nil {
@@ -279,6 +280,7 @@ func (h *leafHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.Rea
 		// Buck2 and Bazel should read digests via xattr and never try to get file contents locally.
 		// Instead, they should always use the remote asset service to fetch the file contents directly
 		// from the internet into the remote CAS.
+		logging.Debugf("read(%s, %d, %d): fail_reads is enabled", h.inode.Path(h.inode.Root()), len(dest), off)
 		return nil, syscall.EBADF
 	}
 
@@ -291,6 +293,7 @@ func (h *leafHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.Rea
 		// unknown error
 		return nil, syscall.EIO
 	}
+	logging.Debugf("read(%s, %d, %d) = %d", h.inode.Path(h.inode.Root()), len(dest), off, n)
 	return fuse.ReadResultData(dest[:n]), 0
 }
 

@@ -87,6 +87,14 @@ func Run(ctx context.Context, args []string) {
 	checksumCache := integrity.NewCache()
 	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, checksumCache, digestFunction)
 
+	mountStat, err := os.Stat(mountPoint)
+	if os.IsNotExist(err) {
+		cmdhelper.FatalFmt("mount point %s does not exist", mountPoint)
+	}
+	if !mountStat.IsDir() {
+		cmdhelper.FatalFmt("mount point %s is not a directory", mountPoint)
+	}
+
 	logging.Basicf("Mounting %s at %s", globalConfig.ManifestPath, mountPoint)
 
 	watcher, root, err := watcher.New(view, globalConfig, checksumCache, prefetcher)

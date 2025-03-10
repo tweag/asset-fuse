@@ -1,0 +1,35 @@
+{
+  "paths": {
+    ".bazelversion": {
+      "integrity": "sha256-IhUgG59hJGQVJhvsC2M7Na+bqmIZiiFDQT/P2/BDYOA=",
+      "size": 6
+    },
+    "BUILD": {
+      "integrity": "sha256-HUBeOfzmLMpiYPzqpJbkizDrDxMZHInZv2RW0ID6nsk=",
+      "size": 144
+    },
+    "MODULE.bazel": {
+      "integrity": "sha256-N7toTahmOhqY6w7K/WODt3hQ+j9lmufXLYIYqwpUSCY=",
+      "size": 60
+    },
+    "print_fortune.go": {
+      "integrity": "sha256-p6pfop1iXbIJ67qxJnSiiSRc3Bfr9bgG1FZzl9h7xKg=",
+      "size": 139
+    },
+    "fortune/BUILD": {
+      "integrity": "sha256-J5wTtN9RJ4wTPbH0Tpt1ZvxJSnUzWSUtKegf5Sg1cZo=",
+      "size": 336
+    },
+    "fortune/fortune.go": {
+      "integrity": "sha256-nki7+f619fdFdbhjH7q9lW+zi4gzgppHe4m3BIhxi4s=",
+      "size": 238
+    },
+    "fortune/fortune_test.go": {
+      "integrity": "sha256-63+NLokT+8AgfzQCeWDTmvvqTWVDQLmXYinICF+J6qI=",
+      "size": 279
+    }
+  },
+  "uri_templates": [
+    "https://raw.githubusercontent.com/bazelbuild/examples/b09df520b12c5ac05dd282f2f4b0235ec4ca40f3/go-tutorial/stage3/{path}"
+  ]
+}
