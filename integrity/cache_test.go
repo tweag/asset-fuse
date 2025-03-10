@@ -24,25 +24,24 @@ func TestCacheStoreAndLoad(t *testing.T) {
 
 	// We learned the digest (via the remote-asset api, for example) and now we store it in the cache.
 	knownSize := int64(2727)
-	c.PutIntegrity(hashes, knownSize)
-
 	expectedDigest := integrity.NewDigest([]byte{
 		0x32, 0x05, 0x60, 0xca, 0x84, 0xc8, 0xa6, 0x08, 0xb2, 0x29, 0xde, 0x5a, 0x84, 0xe4, 0x0f, 0xc1,
 		0xca, 0x99, 0x82, 0x9d, 0x4c, 0x3e, 0x52, 0xc3, 0x90, 0xdb, 0x9e, 0xaf, 0x4f, 0xb3, 0xf2, 0x91,
 	}, knownSize, integrity.SHA256)
+	c.PutIntegrity(hashes, expectedDigest)
 
-	digest, ok := c.FromIntegrity(hashes)
+	gotDigest, ok := c.FromIntegrity(hashes)
 	if !ok {
 		t.Fatal("cache should contain the digest")
 	}
-	if !expectedDigest.Equals(digest, integrity.SHA256) {
-		t.Fatalf("expected %v, got %v", expectedDigest, digest)
+	if !expectedDigest.Equals(gotDigest, integrity.SHA256) {
+		t.Fatalf("expected %v, got %v", expectedDigest, gotDigest)
 	}
 
 	// if we use the hash directly, we should get the same result
 	var digestArray32 [32]byte
 	expectedDigest.CopyHashInto(digestArray32[:], integrity.SHA256)
-	digest, ok = c.GetSlice(digestArray32[:], integrity.SHA256.Identifier())
+	gotDigest, ok = c.GetSlice(digestArray32[:], integrity.SHA256.Identifier())
 	if !ok {
 		t.Fatal("cache should contain the digest")
 	}
@@ -54,13 +53,13 @@ func TestCacheStoreAndLoad(t *testing.T) {
 		0x05, 0xe2, 0x7a, 0x94, 0x04, 0x0b, 0xe4, 0x84, 0xde, 0x7a, 0x48, 0xed, 0x1d, 0xed, 0xb2, 0x8a,
 	}
 	expectedDigest = integrity.NewDigest(digestArray48[:], knownSize, integrity.SHA384)
-	digest, ok = c.GetSlice(digestArray48[:], integrity.SHA384.Identifier())
+	gotDigest, ok = c.GetSlice(digestArray48[:], integrity.SHA384.Identifier())
 	if !ok {
 		t.Fatal("cache should contain the digest")
 	}
 
 	// check that the identifier is used
-	digest, ok = c.GetSlice(digestArray32[:], integrity.SHA384.Identifier())
+	gotDigest, ok = c.GetSlice(digestArray32[:], integrity.SHA384.Identifier())
 	if ok {
 		t.Fatal("used wrong identifier but got a result")
 	}

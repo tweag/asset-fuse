@@ -1,6 +1,7 @@
 package integrity
 
 import (
+	"hash/maphash"
 	"sync"
 )
 
@@ -9,14 +10,18 @@ import (
 // One byte is reserved for the identifier of the checksum.
 // The value is a digest (for the main digest function "--digest_function").
 type ChecksumCache struct {
-	shards [shardCount]map[[65]byte]Digest
+	shards [shardCount]map[uint64]Digest
 	muxs   [shardCount]sync.RWMutex
+	seed   maphash.Seed
 }
 
 func NewCache() *ChecksumCache {
-	cache := &ChecksumCache{shards: [shardCount]map[[65]byte]Digest{}}
+	cache := &ChecksumCache{
+		shards: [shardCount]map[uint64]Digest{},
+		seed:   maphash.MakeSeed(),
+	}
 	for i := range cache.shards {
-		cache.shards[i] = make(map[[65]byte]Digest)
+		cache.shards[i] = make(map[uint64]Digest)
 	}
 	return cache
 }
@@ -29,11 +34,12 @@ func (c *ChecksumCache) GetSlice(hash []byte, identifier byte) (Digest, bool) {
 	c.muxs[shard].RLock()
 	defer c.muxs[shard].RUnlock()
 
-	var key [65]byte
-	copy(key[:64], hash)
-	key[64] = identifier
+	var key maphash.Hash
+	key.SetSeed(c.seed)
+	key.Write(hash)
+	key.WriteByte(identifier)
 
-	digest, ok := c.shards[shard][key]
+	digest, ok := c.shards[shard][key.Sum64()]
 	return digest, ok
 }
 
@@ -45,11 +51,12 @@ func (c *ChecksumCache) PutSlice(hash []byte, identifier byte, digest Digest) {
 	c.muxs[shard].Lock()
 	defer c.muxs[shard].Unlock()
 
-	var key [65]byte
-	copy(key[:64], hash)
-	key[64] = identifier
+	var key maphash.Hash
+	key.SetSeed(c.seed)
+	key.Write(hash)
+	key.WriteByte(identifier)
 
-	c.shards[shard][key] = digest
+	c.shards[shard][key.Sum64()] = digest
 }
 
 func (c *ChecksumCache) FromIntegrity(integrity Integrity) (Digest, bool) {
@@ -66,9 +73,9 @@ func (c *ChecksumCache) FromChecksum(checksum Checksum) (Digest, bool) {
 	return c.GetSlice(checksum.Hash, checksum.Algorithm.Identifier())
 }
 
-func (c *ChecksumCache) PutIntegrity(integrity Integrity, sizeBytes int64) {
+func (c *ChecksumCache) PutIntegrity(integrity Integrity, digest Digest) {
 	for checksum := range integrity.Items() {
-		c.PutSlice(checksum.Hash, checksum.Algorithm.Identifier(), NewDigest(checksum.Hash, sizeBytes, checksum.Algorithm))
+		c.PutSlice(checksum.Hash, checksum.Algorithm.Identifier(), digest)
 	}
 }
 
