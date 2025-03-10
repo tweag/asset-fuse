@@ -9,7 +9,4 @@ type Asset struct {
 	URIs       []string
 	Integrity  integrity.Integrity
 	Qualifiers map[string]string
-	// SizeHint is the size of the asset in bytes, if known.
-	// If the size is not known, this field is set to -1.
-	SizeHint int64
 }

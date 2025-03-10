@@ -10,6 +10,7 @@ import (
 	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 	assetService "github.com/tweag/asset-fuse/service/asset"
 	casService "github.com/tweag/asset-fuse/service/cas"
 	"github.com/tweag/asset-fuse/service/downloader"
@@ -75,14 +76,14 @@ func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset, of
 	if err := p.Materialize(ctx, asset); err != nil {
 		return nil, err
 	}
-	checksum, haveExpectedChecksum := asset.Integrity.ChecksumForAlgorithm(p.digestFunction)
 
-	if asset.SizeHint < 0 || !haveExpectedChecksum {
+	digest, digestIsKnown := p.checksumCache.FromIntegrity(asset.Integrity)
+
+	if !digestIsKnown {
 		// unable to construct the digest in advance
-		panic("implement random access streaming when the digest is not known in advance (missing hash or size)")
+		panic("implement random access streaming when the digest is not known in advance")
 	}
-	digest := integritypkg.NewDigest(checksum.Hash, asset.SizeHint, p.digestFunction)
-	return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, asset.SizeHint))
+	return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, digest.SizeBytes))
 }
 
 // Prefetch ensures that the asset referenced by the given URIs and integrity is available in the remote CAS.
@@ -90,11 +91,49 @@ func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset, of
 // This means that calling Prefetch doesn't guarantee that the data is available locally.
 // TODO: decide how users can get notified when the prefetching is done.
 // TODO: deduplicate requests.
-func (p *Prefetcher) Prefetch(ctx context.Context, asset api.Asset) error {
+// TODO: cache the result of the prefetching with a configurable TTL.
+func (p *Prefetcher) Prefetch(ctx context.Context, asset api.Asset) (integrity.Digest, error) {
 	// TODO: make this non-blocking with a method to get notified when the prefetching is done.
 	// TODO: for now, this is blocking - bad.
 
-	panic("implement me")
+	if p.remoteAsset == nil {
+		return integritypkg.Digest{}, errors.New("Prefetch called without remote asset service")
+	}
+
+	knownDigest, digestIsKnown := p.checksumCache.FromIntegrity(asset.Integrity)
+
+	if p.remoteCAS != nil && digestIsKnown {
+		// check if the remote cache has the data already (without fetching)
+		missingBlobs, err := p.remoteCAS.FindMissingBlobs(ctx, []integritypkg.Digest{knownDigest}, p.digestFunction)
+		if err != nil {
+			return integritypkg.Digest{}, err
+		}
+		if len(missingBlobs) == 0 {
+			// the data is already in the remote cache
+			return knownDigest, nil
+		}
+		// otherwise, we know the expected digest, but the remote cache doesn't have the data... continue with fetching.
+	}
+
+	fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
+	if err != nil {
+		return integritypkg.Digest{}, err
+	}
+	// try to validate the response with the cached checksum
+	if digestIsKnown {
+		if !knownDigest.Equals(fetchBlobResponse.BlobDigest, p.digestFunction) {
+			return integritypkg.Digest{}, fmt.Errorf("expected digest %s, got %s", knownDigest.Hex(p.digestFunction), fetchBlobResponse.BlobDigest.Hex(p.digestFunction))
+		}
+	} else {
+		// we learned a new association between the asset and the digest
+		var integrityStrings []string
+		for integrityString := range asset.Integrity.Items() {
+			integrityStrings = append(integrityStrings, integrityString.ToSRI())
+		}
+		logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, fetchBlobResponse.BlobDigest.Hex(p.digestFunction), fetchBlobResponse.BlobDigest.SizeBytes)
+		p.checksumCache.PutIntegrity(asset.Integrity, fetchBlobResponse.BlobDigest)
+	}
+	return fetchBlobResponse.BlobDigest, nil
 }
 
 // Materialize ensures that the asset referenced by the given URIs and integrity is available in the local cache for reading.
@@ -113,7 +152,12 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 		return p.materializeWithDigest(ctx, asset, digest)
 	}
 
-	panic("implement materialize if the digest is not known in advance (missing hash or size)")
+	digest, err := p.Prefetch(ctx, asset)
+	if err != nil {
+		return fmt.Errorf("materializing asset %v failed when trying to learn digest: %w", asset, err)
+	}
+
+	return p.materializeWithDigest(ctx, asset, digest)
 }
 
 func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...integritypkg.Digest) error {
@@ -124,12 +168,13 @@ func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...in
 		return errors.New("cannot transfer data from remote CAS to disk cache without remote CAS")
 	}
 
+	var err error
 	for len(digests) > 0 {
-		missingBlobs, err := p.casRemoteToLocalTransferPart(ctx, digests...)
+		digests, err = p.casRemoteToLocalTransferPart(ctx, digests...)
 		if err != nil {
 			return err
 		}
-		if len(missingBlobs) == 0 {
+		if len(digests) == 0 {
 			break
 		}
 	}

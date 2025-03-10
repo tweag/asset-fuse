@@ -20,8 +20,6 @@ import (
 // which is identified by a path, uri(s), and digest.
 type leaf struct {
 	fs.Inode
-	// The digest of the leaf
-	digest       integrity.Digest
 	manifestNode *manifest.Leaf
 }
 
@@ -33,16 +31,15 @@ func (l *leaf) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 func (l *leaf) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	// TODO: decide if / when reading attributes should issue a fetch on the remote asset API
 	root := l.Root().Operations().(*root)
-	if l.digest.Uninitialized() {
-		// for now, we assume that "Lookup" on the parent must have initialized the digest
-		// and we don't try to fetch here.
-		// TODO: think about a better way to handle this.
-		panic("digest uninitialized in Getattr - this should never happen but is a temporary restriction")
-	}
 	out.Mode = l.manifestNode.Mode()
 	// TODO: should ctime be the same as mtime?
 	out.SetTimes(nil, &root.mtime, &root.mtime)
-	out.Size = uint64(l.digest.SizeBytes)
+	size, ok := l.size(ctx)
+	if !ok {
+		logging.Warningf("%s: reporting unknown size - consider adding the size to the manifest if it is known", l.Path(l.Root()))
+		size = 0
+	}
+	out.Size = uint64(size)
 	out.Blocks = (out.Size + 511) / 512
 
 	return 0
@@ -51,10 +48,8 @@ func (l *leaf) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, syscall.Errno) {
 	root := l.Root().Operations().(*root)
 
-	var digest integrity.Digest
 	var algorithm integrity.Algorithm
 	if len(root.digestHashXattrName) > 0 && attr == root.digestHashXattrName {
-		digest = l.digest
 		algorithm = root.digestAlgorithm
 	} else if !strings.HasPrefix(attr, "user.") {
 		// unsupported attribute name
@@ -68,13 +63,11 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 			// unsupported attribute name
 			return 0, syscall.ENODATA
 		}
-		checksum, ok := l.manifestNode.Integrity.ChecksumForAlgorithm(algorithm)
-		if !ok {
-			// integrity doesn't have a checksum for the algorithm
-			return 0, syscall.ENODATA
-		}
-		// TODO: this reaches into l.digest internals - is this ok?
-		digest = integrity.NewDigest(checksum.Hash, l.digest.SizeBytes, checksum.Algorithm)
+	}
+
+	csum, err := l.checksum(ctx, algorithm)
+	if err != nil {
+		return 0, syscall.ENODATA
 	}
 
 	// Someone is trying to read the digest hash via xattr.
@@ -82,7 +75,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	// Performance hack: we will use this opportunity to prefetch the asset into the remote cache.
 	// This way, remote execution can magically use this file as an action input (without us uploading it to the remote cache).
 	// TODO: make this configurable and non-blocking.
-	if err := root.prefetcher.Prefetch(ctx, l.toAsset()); err != nil {
+	if _, err := root.prefetcher.Prefetch(ctx, l.toAsset()); err != nil {
 		logging.Warningf("prefetch failed: %v", err)
 	}
 
@@ -93,7 +86,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 		return destSizeBytes, syscall.ERANGE
 	}
 
-	if err := digest.CopyHashInto(dest, algorithm); err != nil {
+	if n := copy(dest, csum.Hash); n != len(csum.Hash) {
 		// should be unreachable (we checked the buffer size in advance)
 		// and there is no other reason for the copy to fail
 		return 0, syscall.EIO
@@ -165,13 +158,6 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 		return nil, 0, syscall.EACCES
 	}
 
-	if l.digest.Uninitialized() {
-		// for now, we assume that "Lookup" on the parent must have initialized the digest
-		// and we don't try to fetch here.
-		// TODO: think about a better way to handle this.
-		panic("digest uninitialized in Open - this should never happen but is a temporary restriction")
-	}
-
 	asset := l.toAsset()
 
 	// We are about the read the file, so we materialize the data.
@@ -204,11 +190,69 @@ func (n *leaf) UpdateManifest(manifestNode *manifest.Leaf) {
 
 func (l *leaf) toAsset() api.Asset {
 	// TODO: make Qualifiers configurable
+	return leafToAsset(l.manifestNode)
+}
+
+// checksum returns the checksum for the leaf node.
+// If the checksum is not available, it returns ENODATA (which is expected for xattr retrieval).
+func (l *leaf) checksum(ctx context.Context, algorithm integrity.Algorithm) (integrity.Checksum, error) {
+	root := l.Root().Operations().(*root)
+	return leafChecksum(ctx, l.manifestNode, algorithm, root)
+}
+
+func (l *leaf) size(ctx context.Context) (int64, bool) {
+	root := l.Root().Operations().(*root)
+	return leafSize(ctx, l.manifestNode, root.digestAlgorithm, root)
+}
+
+func leafToAsset(leafNode *manifest.Leaf) api.Asset {
+	// TODO: make Qualifiers configurable
 	return api.Asset{
-		URIs:      l.manifestNode.URIs,
-		Integrity: l.manifestNode.Integrity,
-		SizeHint:  l.manifestNode.SizeHint,
+		URIs:      leafNode.URIs,
+		Integrity: leafNode.Integrity,
 	}
+}
+
+func leafDigest(ctx context.Context, manifestLeaf *manifest.Leaf, root *root) (integrity.Digest, error) {
+	if digest, ok := root.checksumCache.FromIntegrity(manifestLeaf.Integrity); ok {
+		return digest, nil
+	}
+	// TODO: make this behavior configurable:
+	// - fail the operation
+	// - fetch the digest
+	// - use a default size
+
+	digest, err := root.prefetcher.Prefetch(ctx, leafToAsset(manifestLeaf))
+	if err != nil {
+		return integrity.Digest{}, err
+	}
+	return digest, nil
+}
+
+// checksum returns the checksum for the leaf node.
+// If the checksum is not available, it returns ENODATA (which is expected for xattr retrieval).
+func leafChecksum(ctx context.Context, manifestLeaf *manifest.Leaf, algorithm integrity.Algorithm, root *root) (integrity.Checksum, error) {
+	if checksum, ok := manifestLeaf.Integrity.ChecksumForAlgorithm(algorithm); ok {
+		return checksum, nil
+	}
+	if algorithm == root.digestAlgorithm {
+		digest, err := leafDigest(ctx, manifestLeaf, root)
+		if err == nil {
+			return integrity.ChecksumFromDigest(digest, algorithm), nil
+		}
+	}
+	return integrity.Checksum{}, syscall.ENODATA
+}
+
+func leafSize(ctx context.Context, manifestLeaf *manifest.Leaf, algorithm integrity.Algorithm, root *root) (int64, bool) {
+	if manifestLeaf.SizeHint >= 0 {
+		return manifestLeaf.SizeHint, true
+	}
+	digest, err := leafDigest(ctx, manifestLeaf, root)
+	if err != nil {
+		return 0, false
+	}
+	return digest.SizeBytes, true
 }
 
 type leafHandle struct {

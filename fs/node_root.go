@@ -16,6 +16,9 @@ type root struct {
 	// additionally, the root node holds configuration
 	// and handles on external services
 
+	// a cache of integrity checksums -> digests (hash + size)
+	checksumCache *integrity.ChecksumCache
+
 	// The single digest algorithm used (as opposed to multiple checksums / integrity values that are allowed in the manifest)
 	digestAlgorithm integrity.Algorithm
 
@@ -37,6 +40,7 @@ type root struct {
 
 func Root(
 	manifestTree manifest.ManifestTree,
+	checksumCache *integrity.ChecksumCache,
 	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string, failReads bool,
 	prefetcher *prefetcher.Prefetcher,
 ) *root {
@@ -44,6 +48,7 @@ func Root(
 		dirent: dirent{
 			manifestNode: manifestTree.Root,
 		},
+		checksumCache:       checksumCache,
 		digestAlgorithm:     digestAlgorithm,
 		mtime:               mtime,
 		digestHashXattrName: digestHashAttributeName,

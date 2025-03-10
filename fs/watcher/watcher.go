@@ -66,7 +66,7 @@ func New(view manifest.View, config api.GlobalConfig, checksumCache *integrity.C
 	if config.FailReads != nil {
 		failReads = *config.FailReads
 	}
-	root := fs.Root(initialManifest, digestFunction, time.Now(), config.DigestXattrName, failReads, prefetcher)
+	root := fs.Root(initialManifest, checksumCache, digestFunction, time.Now(), config.DigestXattrName, failReads, prefetcher)
 
 	return &ManifestWatcher{
 		manifestPath:   config.ManifestPath,

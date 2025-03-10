@@ -2,6 +2,7 @@ package fs
 
 import (
 	"context"
+	"path"
 	"slices"
 	"syscall"
 	"time"
@@ -9,7 +10,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/tweag/asset-fuse/fs/manifest"
-	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 )
 
 type dirent struct {
@@ -46,29 +47,18 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 		out.SetAttrTimeout(direntTTL)
 		out.SetEntryTimeout(direntTTL)
 	case *manifest.Leaf:
-		checksum, ok := child.Integrity.ChecksumForAlgorithm(root.digestAlgorithm)
-		if !ok {
-			// digest algorithm not found
-			// TODO: decide if digest can be lazy-loaded
-			panic("digest algorithm not found - we should never get here, unless we want to allow leafs with no integrity for the digest algorithm")
-		}
-		if child.SizeHint < 0 {
-			// size hint not found
-			// TODO: decide if size hint can be lazy-loaded
-			panic("size hint not found - we should never get here, unless we want to allow leafs with no size hint")
-		}
-
 		// child is a readonly leaf
 		ops = &leaf{
 			manifestNode: child,
-			// TODO: size hint can only be used
-			// if it is known (>= 0).
-			// Otherwise, we need to fetch the asset.
-			digest: integrity.NewDigest(checksum.Hash, child.SizeHint, checksum.Algorithm),
 		}
-		out.Mode = child.Mode()
-		out.Size = uint64(child.SizeHint)
+		size, ok := leafSize(ctx, child, root.digestAlgorithm, root)
+		if !ok {
+			logging.Warningf("%s: reporting unknown size - consider adding the size to the manifest if it is known", path.Join(n.Path(n.Root()), name))
+			size = 0
+		}
+		out.Size = uint64(size)
 		out.Blocks = (out.Size + 511) / 512
+		out.Mode = child.Mode()
 
 		stableAttr.Mode = syscall.S_IFREG
 	default:

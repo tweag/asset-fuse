@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 )
 
 // Manifest describes the JSON manifest file format.
@@ -62,8 +63,10 @@ func (m ManifestPaths) validate() error {
 		return errors.New("empty manifest")
 	}
 	issues := []string{}
+	warnings := []string{}
 	for path, entry := range m {
 		issuesForPath := []string{}
+		warningsForPath := []string{}
 		if len(path) == 0 || path[0] == '/' {
 			issuesForPath = append(issuesForPath, "path must a non-empty path to the artifact, relative to the mount point")
 		}
@@ -88,13 +91,18 @@ func (m ManifestPaths) validate() error {
 		if entry.Size != nil && *entry.Size < 0 {
 			issuesForPath = append(issuesForPath, `"size" must be a non-negative integer`)
 		}
-		// TODO: lift this restriction when we support learning the size
 		if entry.Size == nil {
-			issuesForPath = append(issuesForPath, `"size" must be provided (for now - this is a temporary restriction)`)
+			warningsForPath = append(warningsForPath, `"size" was not provided - this may cause performance issues`)
 		}
 		if len(issuesForPath) > 0 {
 			issues = append(issues, path+": "+strings.Join(issuesForPath, ", "))
 		}
+		if len(warningsForPath) > 0 {
+			warnings = append(warnings, path+": "+strings.Join(warningsForPath, ", "))
+		}
+	}
+	if len(warnings) > 0 {
+		logging.Warningf("manifest validation warnings: \n  %s", strings.Join(warnings, "\n  "))
 	}
 	if len(issues) > 0 {
 		return errors.New("manifest validation failed: \n  " + strings.Join(issues, "\n  "))
