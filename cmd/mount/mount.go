@@ -84,11 +84,12 @@ func Run(ctx context.Context, args []string) {
 		// to make sure that the code is not accidentally using the remote cache.
 		// Additionally, we can signal to the prefetcher that it should not try to fetch anything.
 	}
-	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, digestFunction)
+	checksumCache := integrity.NewCache()
+	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, checksumCache, digestFunction)
 
 	logging.Basicf("Mounting %s at %s", globalConfig.ManifestPath, mountPoint)
 
-	watcher, root, err := watcher.New(view, globalConfig, prefetcher)
+	watcher, root, err := watcher.New(view, globalConfig, checksumCache, prefetcher)
 	if err != nil {
 		cmdhelper.FatalFmt("creating manifest watcher: %v", err)
 	}

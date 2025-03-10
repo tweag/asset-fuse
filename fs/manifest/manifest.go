@@ -168,7 +168,8 @@ func (d *Directory) Mode() uint32 {
 }
 
 type ManifestTree struct {
-	Root *Directory
+	Root  *Directory
+	Leafs map[string]*Leaf
 }
 
 func (t ManifestTree) Insert(leafPath string, leaf Leaf) error {
@@ -220,11 +221,15 @@ func (t ManifestTree) Insert(leafPath string, leaf Leaf) error {
 		return insertingPathConflictAndKindError
 	}
 	current.Children[leafName] = &leaf
+	t.Leafs[leafPath] = &leaf
 	return nil
 }
 
 func NewTree() ManifestTree {
-	return ManifestTree{Root: &Directory{Children: map[string]any{}}}
+	return ManifestTree{
+		Root:  &Directory{Children: map[string]any{}},
+		Leafs: map[string]*Leaf{},
+	}
 }
 
 func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algorithm) (ManifestTree, error) {

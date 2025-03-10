@@ -29,13 +29,14 @@ type ManifestWatcher struct {
 	manifestTree   *manifest.ManifestTree
 	fsRoot         updateableRoot
 	view           manifest.View
+	checksumCache  *integrity.ChecksumCache
 	digestFunction integrity.Algorithm
 	notifyWatcher  *fsnotify.Watcher
 	closeOnce      sync.Once
 }
 
 // New creates a new ManifestWatcher.
-func New(view manifest.View, config api.GlobalConfig, prefetcher *prefetcher.Prefetcher) (*ManifestWatcher, goFUSEfs.InodeEmbedder, error) {
+func New(view manifest.View, config api.GlobalConfig, checksumCache *integrity.ChecksumCache, prefetcher *prefetcher.Prefetcher) (*ManifestWatcher, goFUSEfs.InodeEmbedder, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, nil, err
@@ -54,6 +55,13 @@ func New(view manifest.View, config api.GlobalConfig, prefetcher *prefetcher.Pre
 	if err != nil {
 		return nil, nil, err
 	}
+	for _, leaf := range initialManifest.Leafs {
+		// Try to prefill the checksum cache with the checksums from the initial manifest.
+		if checksum, ok := leaf.Integrity.ChecksumForAlgorithm(digestFunction); ok && leaf.SizeHint >= 0 {
+			digest := integrity.NewDigest(checksum.Hash, leaf.SizeHint, digestFunction)
+			checksumCache.PutIntegrity(leaf.Integrity, digest)
+		}
+	}
 	var failReads bool
 	if config.FailReads != nil {
 		failReads = *config.FailReads
@@ -67,6 +75,7 @@ func New(view manifest.View, config api.GlobalConfig, prefetcher *prefetcher.Pre
 		manifestTree:   &initialManifest,
 		fsRoot:         root,
 		view:           view,
+		checksumCache:  checksumCache,
 		digestFunction: digestFunction,
 		notifyWatcher:  watcher,
 	}, root, nil
@@ -132,6 +141,15 @@ func (w *ManifestWatcher) updateFilesystemTreeOnChange() error {
 	}
 
 	logging.Basicf("manifest was changed, updating tree (%v)", w.manifestDigest.Hex(w.digestFunction))
+
+	for _, leaf := range newManifestTree.Leafs {
+		// Prefill the checksum cache with the checksums from the updated manifest.
+		if checksum, ok := leaf.Integrity.ChecksumForAlgorithm(w.digestFunction); ok && leaf.SizeHint >= 0 {
+			digest := integrity.NewDigest(checksum.Hash, leaf.SizeHint, w.digestFunction)
+			w.checksumCache.PutIntegrity(leaf.Integrity, digest)
+		}
+	}
+
 	w.fsRoot.UpdateManifest(newManifestTree.Root)
 	w.fsRoot.UpdateMtime(w.manifestMtime)
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tweag/asset-fuse/api"
+	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
 	assetService "github.com/tweag/asset-fuse/service/asset"
 	casService "github.com/tweag/asset-fuse/service/cas"
@@ -31,16 +32,18 @@ type Prefetcher struct {
 	localCAS       casService.LocalCAS
 	remoteAsset    assetService.Asset
 	downloader     downloader.Downloader
+	checksumCache  *integrity.ChecksumCache
 	digestFunction integritypkg.Algorithm
 }
 
 // NewPrefetcher creates a new Prefetcher.
-func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remoteAsset assetService.Asset, downloader downloader.Downloader, digestFunction integritypkg.Algorithm) *Prefetcher {
+func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remoteAsset assetService.Asset, downloader downloader.Downloader, checksumCache *integritypkg.ChecksumCache, digestFunction integritypkg.Algorithm) *Prefetcher {
 	return &Prefetcher{
 		localCAS:       localCAS,
 		remoteCAS:      remoteCAS,
 		remoteAsset:    remoteAsset,
 		downloader:     downloader,
+		checksumCache:  checksumCache,
 		digestFunction: digestFunction,
 	}
 }
@@ -104,12 +107,10 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 		return errors.New("Materialize called without disk cache")
 	}
 
-	checksum, haveExpectedChecksum := asset.Integrity.ChecksumForAlgorithm(p.digestFunction)
-
-	if asset.SizeHint >= 0 && haveExpectedChecksum {
+	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
 		// we know the hash and size of the expected data
 		// we can construct the digest in advance
-		return p.materializeWithDigest(ctx, asset, integritypkg.NewDigest(checksum.Hash, asset.SizeHint, p.digestFunction))
+		return p.materializeWithDigest(ctx, asset, digest)
 	}
 
 	panic("implement materialize if the digest is not known in advance (missing hash or size)")
@@ -231,7 +232,7 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 			return err
 		}
 		if !digest.Equals(fetchBlobResponse.BlobDigest, p.digestFunction) {
-			return fmt.Errorf("expected digest %s, got %s", digest, fetchBlobResponse.BlobDigest)
+			return fmt.Errorf("expected digest %s, got %s", digest.Hex(p.digestFunction), fetchBlobResponse.BlobDigest.Hex(p.digestFunction))
 		}
 		// We now assume that the data is in the remote CAS.
 		// We simply download it from the remote CAS to the local CAS.
