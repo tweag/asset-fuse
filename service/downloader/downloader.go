@@ -3,6 +3,7 @@ package downloader
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -45,7 +46,7 @@ func (d *Downloader) FetchBlob(
 	logging.Debugf("downloading asset specified by %v", apiAsset.URIs)
 	// TODO: caching based on URI, integrity, and qualifiers (while respecting oldestContentAccepted)
 	// TODO: errors returned here should follow the remote asset API's error model (i.e, by setting meaningful status codes)
-	sharedHeaders, perURIHeaders, err := headersFromQualifiersAndIntegrity(apiAsset.Qualifiers, apiAsset.Integrity, len(apiAsset.URIs))
+	sharedHeaders, perURIHeaders, err := headersFromQualifiers(apiAsset.Qualifiers, len(apiAsset.URIs))
 	if err != nil {
 		return asset.FetchBlobResponse{}, err
 	}
@@ -69,7 +70,6 @@ func (d *Downloader) FetchBlob(
 			break
 		}
 		uriIssues = append(uriIssues, fmt.Sprintf("%s: %v", uri, err))
-
 	}
 	if digest.Uninitialized() {
 		return asset.FetchBlobResponse{}, fmt.Errorf("unable to download asset from any uri:\n  %v", strings.Join(uriIssues, "\n  "))
@@ -95,7 +95,7 @@ func (d *Downloader) downloadBlobFromURI(ctx context.Context, timeout time.Durat
 	uri string, headers map[string][]string, expectedContent integrity.Integrity, digestFunction integrity.Algorithm,
 ) (integrity.Digest, error) {
 	if expectedContent.Empty() {
-		return integrity.Digest{}, fmt.Errorf("downloading blob from %s: no digests to validate", uri)
+		return integrity.Digest{}, errors.New("downloading blob: no digests to validate")
 	}
 
 	if timeout != 0 {
@@ -115,7 +115,7 @@ func (d *Downloader) downloadBlobFromURI(ctx context.Context, timeout time.Durat
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return integrity.Digest{}, fmt.Errorf("downloading blob from %s: unexpected status code %d", uri, resp.StatusCode)
+		return integrity.Digest{}, fmt.Errorf("downloading blob: unexpected status code %d", resp.StatusCode)
 	}
 	// Check if the body is known to fit in memory.
 	canDownloadInMemory := resp.ContentLength >= 0 && resp.ContentLength <= maxInMemoryDownloadSize
@@ -170,7 +170,7 @@ func (d *Downloader) downloadBlobFromURI(ctx context.Context, timeout time.Durat
 	}
 
 	if resp.ContentLength >= 0 && n != resp.ContentLength {
-		return integrity.Digest{}, fmt.Errorf("downloading blob from %s: unexpected content length %d bytes expected, got %d", uri, resp.ContentLength, n)
+		return integrity.Digest{}, fmt.Errorf("downloading blob: unexpected content length %d bytes expected, got %d", resp.ContentLength, n)
 	}
 
 	// validate all digests
@@ -198,13 +198,13 @@ func (d *Downloader) downloadBlobFromURI(ctx context.Context, timeout time.Durat
 		knownDigest = integrity.NewDigest(learnedHash, n, digestFunction)
 	}
 	if len(checksumValidationErrors) > 0 {
-		return integrity.Digest{}, fmt.Errorf("downloading blob from %s: %v", uri, checksumValidationErrors)
+		return integrity.Digest{}, fmt.Errorf("downloading blob: %v", checksumValidationErrors)
 	}
 
 	return d.localCAS.ImportBlob(ctx, expectedContent, knownDigest, digestFunction, bodyStagingArea)
 }
 
-func headersFromQualifiersAndIntegrity(qualifiers map[string]string, expectedIntegrity integrity.Integrity, numberOfURIs int) (shared http.Header, perUri []http.Header, err error) {
+func headersFromQualifiers(qualifiers map[string]string, numberOfURIs int) (shared http.Header, perUri []http.Header, err error) {
 	shared = make(http.Header)
 	perUri = make([]http.Header, numberOfURIs)
 	for key, value := range qualifiers {
@@ -231,7 +231,6 @@ func headersFromQualifiersAndIntegrity(qualifiers map[string]string, expectedInt
 			return nil, nil, fmt.Errorf("unknown qualifier name %s", key)
 		}
 	}
-	// TODO: add integrity headers
 	return shared, perUri, nil
 }
 
