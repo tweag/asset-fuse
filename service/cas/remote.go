@@ -7,6 +7,7 @@ import (
 	"io"
 
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
 	"github.com/tweag/asset-fuse/service/status"
@@ -23,8 +24,8 @@ type Remote struct {
 	byteStreamClient bytestream_proto.ByteStreamClient
 }
 
-func NewRemote(target string, opts ...grpc.DialOption) (*Remote, error) {
-	conn, err := protohelper.Client(target, opts...)
+func NewRemote(target string, helper credential.Helper, opts ...grpc.DialOption) (*Remote, error) {
+	conn, err := protohelper.Client(target, helper, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +60,7 @@ func (r *Remote) BatchUpdateBlobs(ctx context.Context, blobData DigestsAndData, 
 
 func (r *Remote) ReadStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset, limit int64) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	stream, err := r.byteStreamClient.Read(ctx, protoReadRequest(blobDigest, digestFunction, offset, limit))
 	if err != nil {

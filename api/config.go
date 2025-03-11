@@ -25,6 +25,9 @@ type GlobalConfig struct {
 	// Example: "grpcs://remote.buildbuddy.io"
 	// Example: "grpc://localhost:8980" (for unencrypted connections - not recommended)
 	Remote string `json:"remote,omitempty"`
+	// CredentialHelper is a utility to obtain credentials for a given uri.
+	// It follows the credential helper spec: https://github.com/EngFlow/credential-helper-spec
+	CredentialHelper string `json:"credential_helper,omitempty"`
 	// Let any read operations on regular files fail with EBADF.
 	// This is useful to test if prefetching and xattr optimizations are working with Buck2 and Bazel:
 	// When remote execution is used and the remote asset service is available,

@@ -2,6 +2,7 @@ package cas
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,7 +31,7 @@ func NewDisk(rootDir string) (*Disk, error) {
 func (d *Disk) FindMissingBlobs(ctx context.Context, blobDigests []integrity.Digest, digestFunction integrity.Algorithm) ([]integrity.Digest, error) {
 	missing := make([]integrity.Digest, 0, len(blobDigests))
 	for _, digest := range blobDigests {
-		fileInfo, err := os.Stat(d.blobPath(digest, digestFunction))
+		fileInfo, err := os.Stat(d.blobPath(integrity.ChecksumFromDigest(digest, digestFunction)))
 		if err != nil {
 			if !os.IsNotExist(err) {
 				// TODO: try to understand what other errors could happen
@@ -41,7 +42,7 @@ func (d *Disk) FindMissingBlobs(ctx context.Context, blobDigests []integrity.Dig
 		}
 		if fileInfo != nil && fileInfo.IsDir() {
 			// our cache is corrupted
-			return nil, fmt.Errorf("blob path %s is a directory", d.blobPath(digest, digestFunction))
+			return nil, fmt.Errorf("blob path %s is a directory", d.blobPath(integrity.ChecksumFromDigest(digest, digestFunction)))
 		}
 	}
 	return missing, nil
@@ -50,7 +51,7 @@ func (d *Disk) FindMissingBlobs(ctx context.Context, blobDigests []integrity.Dig
 func (d *Disk) BatchReadBlobs(ctx context.Context, blobDigests []integrity.Digest, digestFunction integrity.Algorithm) (BatchReadBlobsResponse, error) {
 	responses := make(BatchReadBlobsResponse, 0, len(blobDigests))
 	for _, digest := range blobDigests {
-		data, err := os.ReadFile(d.blobPath(digest, digestFunction))
+		data, err := os.ReadFile(d.blobPath(integrity.ChecksumFromDigest(digest, digestFunction)))
 		if err != nil && os.IsNotExist(err) {
 			responses = append(responses, ReadBlobsResponse{
 				Digest: digest,
@@ -124,7 +125,7 @@ func (d *Disk) BatchUpdateBlobs(ctx context.Context, blobData DigestsAndData, di
 }
 
 func (d *Disk) ReadStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset, limit int64) (io.ReadCloser, error) {
-	file, err := os.Open(d.blobPath(blobDigest, digestFunction))
+	file, err := os.Open(d.blobPath(integrity.ChecksumFromDigest(blobDigest, digestFunction)))
 	if err != nil {
 		return nil, err
 	}
@@ -173,15 +174,44 @@ func (d *Disk) WriteStream(ctx context.Context, blobDigest integrity.Digest, dig
 	return file, nil
 }
 
+// ImportBlob imports a blob from the given reader.
+// It tries to optimize the import by skipping checksum validation if the integrity was already validated.
+// The caller must ensure that prevalidatedIntegrity was actually validated.
+// Additionally, optionalDigest can be provided to skip the checksum calculation if the digest (for digestFunction) is already known.
+// The default value for integrity.Digest is an empty struct, which means that the real digest will be calculated.
+func (d *Disk) ImportBlob(ctx context.Context, prevalidatedIntegrity integrity.Integrity, optionalDigest integrity.Digest, digestFunction integrity.Algorithm, data io.Reader) (integrity.Digest, error) {
+	var knownChecksum integrity.Checksum
+	if !optionalDigest.Uninitialized() {
+		knownChecksum = integrity.ChecksumFromDigest(optionalDigest, digestFunction)
+	} else if prevalidatedChecksum, ok := prevalidatedIntegrity.ChecksumForAlgorithm(digestFunction); ok {
+		knownChecksum = prevalidatedChecksum
+	} else {
+		// TODO: slow checksum validation path
+		panic("ImportBlob: slow checksum validation path not implemented")
+	}
+	if knownChecksum.Empty() {
+		// we should never get here, but better safe than sorry
+		return integrity.Digest{}, errors.New("ImportBlob called without a known checksum")
+	}
+
+	targetLocation := d.blobPath(knownChecksum)
+	sizeBytes, err := hardlinkOrCopy(data, targetLocation)
+	if err != nil {
+		return integrity.Digest{}, err
+	}
+
+	return integrity.NewDigest(knownChecksum.Hash, sizeBytes, digestFunction), nil
+}
+
 // blobPath returns the path to the blob with the given digest.
 // The directory structure used here is very similar to the one used by Bazel's local cache.
 // The only difference is that we allow for different digest functions, by using a subdirectory for each digest function.
 // You can still use the this directory structure with Bazel's local cache, by using a subdir:
 //
 //	bazel build --disk_cache=/path/to/cache/root/sha256
-func (d *Disk) blobPath(digest integrity.Digest, digestFunction integrity.Algorithm) string {
-	hex := digest.Hex(digestFunction)
-	return filepath.Join(d.rootDir, digestFunction.String(), "cas", hex[:2], hex)
+func (d *Disk) blobPath(checksum integrity.Checksum) string {
+	hex := checksum.Hex()
+	return filepath.Join(d.rootDir, checksum.Algorithm.String(), "cas", hex[:2], hex)
 }
 
 func (d *Disk) stagingFile(digest integrity.Digest, digestFunction integrity.Algorithm) (WriterAtCloser, error) {
@@ -196,7 +226,7 @@ func (d *Disk) stagingFile(digest integrity.Digest, digestFunction integrity.Alg
 	return &blobFinalizer{
 		File:        tmpfile,
 		stagingPath: tmpfile.Name(),
-		finalPath:   d.blobPath(digest, digestFunction),
+		finalPath:   d.blobPath(integrity.ChecksumFromDigest(digest, digestFunction)),
 
 		digest:         digest,
 		digestFunction: digestFunction,
@@ -276,7 +306,47 @@ func (b *blobFinalizer) Close() error {
 	return nil
 }
 
-var (
-	_ CAS                = (*Disk)(nil)
-	_ RandomAccessStream = (*Disk)(nil)
-)
+func hardlinkOrCopy(source io.Reader, target string) (fileSize int64, err error) {
+	defer func() {
+		// learn size on function return and cleanup on error
+		if err != nil {
+			os.Remove(target)
+			return
+		}
+		fileInfo, statErr := os.Stat(target)
+		if statErr != nil {
+			err = statErr
+			return
+		}
+		fileSize = fileInfo.Size()
+		return
+	}()
+
+	if sourceFile, ok := source.(*os.File); ok {
+		// try to hardlink the file
+		if err := os.Link(sourceFile.Name(), target); err == nil {
+			return 0, nil
+		}
+	}
+	// if we can't hardlink, we need to copy the file atomically
+	tmpFile, err := os.CreateTemp(filepath.Dir(target), "tmp-")
+	if err != nil {
+		return 0, err
+	}
+	defer tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	_, err = io.Copy(tmpFile, source)
+	if err != nil {
+		return 0, err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return 0, err
+	}
+	if err := os.Rename(tmpFile.Name(), target); err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
+
+var _ LocalCAS = (*Disk)(nil)

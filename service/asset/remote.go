@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	remoteasset_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/asset/v1"
 	"github.com/tweag/asset-fuse/api"
+	"github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
@@ -22,8 +24,8 @@ type RemoteAssetService struct {
 	client remoteasset_proto.FetchClient
 }
 
-func NewRemote(target string, opts ...grpc.DialOption) (*RemoteAssetService, error) {
-	conn, err := protohelper.Client(target, opts...)
+func NewRemote(target string, helper credential.Helper, opts ...grpc.DialOption) (*RemoteAssetService, error) {
+	conn, err := protohelper.Client(target, helper, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +81,7 @@ func protoFetchBlobRequest(
 
 	// we need to merge integrity and qualifiers a list of unique qualifiers
 	uniqueQualifiers := make(map[string]string)
-	for k, v := range qualifiers {
-		uniqueQualifiers[k] = v
-	}
+	maps.Copy(uniqueQualifiers, qualifiers)
 	// in theory, it shouldn't matter which algorithm we use for the sri.
 	// After looking at concrete implementations of the remote asset API,
 	// it seems that sending only the sri for the digest function is most widely supported.

@@ -4,12 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
 	goFUSEfs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/cmd/internal/cmdhelper"
 	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/fs/watcher"
@@ -66,15 +68,24 @@ func Run(ctx context.Context, args []string) {
 	if err != nil {
 		cmdhelper.FatalFmt("creating disk cache at %s: %v", globalConfig.DiskCachePath, err)
 	}
+	var credentialHelper credential.Helper
+	if len(globalConfig.CredentialHelper) > 0 {
+		credentialHelper = credential.New(globalConfig.CredentialHelper)
+	} else {
+		logging.Warningf("No credential helper specified. Authentication may be required for some URIs.")
+		credentialHelper = credential.NopHelper()
+	}
+	httpClient := &http.Client{Transport: credential.RoundTripper(credentialHelper)}
+	downloader := downloader.New(diskCache, httpClient)
 	var remoteCache *cas.Remote
 	var remoteAsset *asset.RemoteAssetService
 	if len(globalConfig.Remote) > 0 {
 		var err error
-		remoteCache, err = cas.NewRemote(globalConfig.Remote)
+		remoteCache, err = cas.NewRemote(globalConfig.Remote, credentialHelper)
 		if err != nil {
 			cmdhelper.FatalFmt("creating remote cache at %s: %v", globalConfig.Remote, err)
 		}
-		remoteAsset, err = asset.NewRemote(globalConfig.Remote)
+		remoteAsset, err = asset.NewRemote(globalConfig.Remote, credentialHelper)
 		if err != nil {
 			cmdhelper.FatalFmt("creating remote asset service at %s: %v", globalConfig.Remote, err)
 		}
@@ -85,11 +96,13 @@ func Run(ctx context.Context, args []string) {
 		// Additionally, we can signal to the prefetcher that it should not try to fetch anything.
 	}
 	checksumCache := integrity.NewCache()
-	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader.Downloader{}, checksumCache, digestFunction)
+	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader, checksumCache, digestFunction)
 
 	mountStat, err := os.Stat(mountPoint)
 	if os.IsNotExist(err) {
 		cmdhelper.FatalFmt("mount point %s does not exist", mountPoint)
+	} else if err != nil {
+		cmdhelper.FatalFmt("statting mount point %s: %v", mountPoint, err)
 	}
 	if !mountStat.IsDir() {
 		cmdhelper.FatalFmt("mount point %s is not a directory", mountPoint)

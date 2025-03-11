@@ -32,13 +32,13 @@ type Prefetcher struct {
 	remoteCAS      casService.CAS
 	localCAS       casService.LocalCAS
 	remoteAsset    assetService.Asset
-	downloader     downloader.Downloader
+	downloader     *downloader.Downloader
 	checksumCache  *integrity.ChecksumCache
 	digestFunction integritypkg.Algorithm
 }
 
 // NewPrefetcher creates a new Prefetcher.
-func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remoteAsset assetService.Asset, downloader downloader.Downloader, checksumCache *integritypkg.ChecksumCache, digestFunction integritypkg.Algorithm) *Prefetcher {
+func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remoteAsset assetService.Asset, downloader *downloader.Downloader, checksumCache *integritypkg.ChecksumCache, digestFunction integritypkg.Algorithm) *Prefetcher {
 	return &Prefetcher{
 		localCAS:       localCAS,
 		remoteCAS:      remoteCAS,

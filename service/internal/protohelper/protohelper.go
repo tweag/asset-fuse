@@ -2,10 +2,12 @@ package protohelper
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
 	remoteexecution_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	credhelper "github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/auth/grpcheaderinterceptor"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/internal/logging"
@@ -54,9 +56,8 @@ func FromProtoStatus(googleStatus *gstatus.Status) status.Status {
 	}
 }
 
-func Client(uri string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	opts = append([]grpc.DialOption{}, opts...)
-
+func Client(uri string, helper credhelper.Helper, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	opts = slices.Clone(opts)
 	schemeAndRest := strings.SplitN(uri, "://", 2)
 	if len(schemeAndRest) != 2 {
 		return nil, fmt.Errorf("invalid uri for grpc: %s", uri)
@@ -75,7 +76,7 @@ func Client(uri string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 
 	target := fmt.Sprintf("dns:%s", schemeAndRest[1])
 
-	opts = append(opts, grpcheaderinterceptor.DialOptions()...)
+	opts = append(opts, grpcheaderinterceptor.DialOptions(helper)...)
 
 	return grpc.NewClient(target, opts...)
 }

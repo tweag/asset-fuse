@@ -75,6 +75,7 @@ func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
 	flagSet.StringVar(&config.DigestFunction, "digest_function", "", "Hash function used to compute the digest of a file. It is also used by the remote- and local CAS to reference blobs")
 	flagSet.StringVar(&config.ManifestPath, "manifest", "", "Path to the manifest file")
 	flagSet.StringVar(&config.LogLevel, "log_level", "", `Log level. one of "error", "warning", "basic", "debug"`)
+	flagSet.StringVar(&config.CredentialHelper, "credential_helper", "", "Credential helper to use for authentication")
 
 	if preset&FlagPresetDiskCache != 0 {
 		flagSet.StringVar(&config.DiskCachePath, "disk_cache", "", "Path to the local (disk) cache directory")

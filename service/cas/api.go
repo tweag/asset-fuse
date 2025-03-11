@@ -21,6 +21,7 @@ type CAS interface {
 type LocalCAS interface {
 	CAS
 	RandomAccessStream
+	ImportBlob(ctx context.Context, prevalidatedIntegrity integrity.Integrity, optionalDigest integrity.Digest, digestFunction integrity.Algorithm, data io.Reader) (integrity.Digest, error)
 }
 
 type Checker interface {

@@ -170,6 +170,10 @@ func (c Checksum) ToSRI() string {
 	return fmt.Sprintf("%s-%s", c.Algorithm.String(), base64.StdEncoding.EncodeToString(c.Hash))
 }
 
+func (c Checksum) Hex() string {
+	return hex.EncodeToString(c.Hash)
+}
+
 func (c Checksum) Equals(other Checksum) bool {
 	return c.Algorithm == other.Algorithm && len(c.Hash) > 0 && len(other.Hash) > 0 && bytes.Equal(c.Hash, other.Hash)
 }
