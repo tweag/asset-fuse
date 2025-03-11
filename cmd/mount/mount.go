@@ -77,8 +77,8 @@ func Run(ctx context.Context, args []string) {
 	}
 	httpClient := &http.Client{Transport: credential.RoundTripper(credentialHelper)}
 	downloader := downloader.New(diskCache, httpClient)
-	var remoteCache *cas.Remote
-	var remoteAsset *asset.RemoteAssetService
+	var remoteCache cas.CAS
+	var remoteAsset asset.Asset
 	if len(globalConfig.Remote) > 0 {
 		var err error
 		remoteCache, err = cas.NewRemote(globalConfig.Remote, credentialHelper)

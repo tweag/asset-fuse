@@ -152,12 +152,29 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 		return p.materializeWithDigest(ctx, asset, digest)
 	}
 
-	digest, err := p.Prefetch(ctx, asset)
-	if err != nil {
-		return fmt.Errorf("materializing asset %v failed when trying to learn digest: %w", asset, err)
+	// we don't know the hash and size of the expected data
+	// we need to fetch the data to learn the hash and size
+	if digest, err := p.Prefetch(ctx, asset); err != nil {
+		logging.Debugf("materializing asset %v failed when trying to prefetch remotely - falling back to direct download: %v", asset, err)
+	} else {
+		return p.materializeWithDigest(ctx, asset, digest)
 	}
 
-	return p.materializeWithDigest(ctx, asset, digest)
+	// we failed to prefetch the data remotely
+	// we need to fall back to direct download
+	resp, err := p.downloader.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
+	if err != nil {
+		logging.Warningf("materializing asset %v failed when trying to download directly: %v", asset, err)
+		return err
+	}
+	// we learned a new association between the asset and the digest
+	var integrityStrings []string
+	for integrityString := range asset.Integrity.Items() {
+		integrityStrings = append(integrityStrings, integrityString.ToSRI())
+	}
+	logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, resp.BlobDigest.Hex(p.digestFunction), resp.BlobDigest.SizeBytes)
+	p.checksumCache.PutIntegrity(asset.Integrity, resp.BlobDigest)
+	return nil
 }
 
 func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...integritypkg.Digest) error {
@@ -284,8 +301,13 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 		return p.casRemoteToLocalTransfer(ctx, digest)
 	}
 
-	panic("implement fallback to local downloader")
-	// TODO: finally, fall back to using HTTP requests directly
+	// finally, fall back to using HTTP requests directly
+	_, err = p.downloader.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
+	if err != nil {
+		return err
+	}
+	logging.Debugf("successfully downloaded asset (%s: %s; %d bytes)", p.digestFunction.String(), digest.Hex(p.digestFunction), digest.SizeBytes)
+	return nil
 }
 
 var (

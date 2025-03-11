@@ -98,8 +98,11 @@ func (d *Downloader) downloadBlobFromURI(ctx context.Context, timeout time.Durat
 		return integrity.Digest{}, fmt.Errorf("downloading blob from %s: no digests to validate", uri)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	if timeout != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, http.NoBody)
 	if err != nil {
 		return integrity.Digest{}, err

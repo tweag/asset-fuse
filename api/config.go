@@ -58,10 +58,7 @@ func (c GlobalConfig) Validate() error {
 	if c.DiskCachePath == "" {
 		issues = append(issues, `disk_cache must be provided`)
 	}
-	if c.Remote == "" {
-		// TODO: should we allow empty remote?
-		issues = append(issues, `remote must be provided`)
-	} else if !slices.Contains([]string{"grpcs", "grpc"}, strings.Split(c.Remote, "://")[0]) {
+	if len(c.Remote) > 0 && !slices.Contains([]string{"grpcs", "grpc"}, strings.Split(c.Remote, "://")[0]) {
 		issues = append(issues, `remote must start with "grpcs://" or "grpc://"`)
 	}
 	switch c.LogLevel {
@@ -94,11 +91,9 @@ func DefaultConfig() GlobalConfig {
 		DigestXattrName: "", // disable custom name by default
 		ManifestPath:    "manifest.json",
 		DiskCachePath:   "~/.cache/asset-fuse",
-		// TODO: remove this default value
-		// Pointing at a SaaS service is not a good default.
-		Remote:    "grpcs://remote.buildbuddy.io",
-		FailReads: nil,
-		FUSEDebug: nil,
-		LogLevel:  "basic",
+		Remote:          "",
+		FailReads:       nil,
+		FUSEDebug:       nil,
+		LogLevel:        "basic",
 	}
 }
