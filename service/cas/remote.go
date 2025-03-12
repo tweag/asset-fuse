@@ -60,10 +60,10 @@ func (r *Remote) BatchUpdateBlobs(ctx context.Context, blobData DigestsAndData, 
 
 func (r *Remote) ReadStream(ctx context.Context, blobDigest integrity.Digest, digestFunction integrity.Algorithm, offset, limit int64) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	stream, err := r.byteStreamClient.Read(ctx, protoReadRequest(blobDigest, digestFunction, offset, limit))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	return &byteStreamReadCloser{

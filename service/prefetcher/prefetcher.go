@@ -164,7 +164,7 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 	// we need to fall back to direct download
 	resp, err := p.downloader.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
 	if err != nil {
-		logging.Warningf("materializing asset %v failed when trying to download directly: %v", asset, err)
+		logging.Warningf("materializing asset failed when trying to download directly: %v", err)
 		return err
 	}
 	// we learned a new association between the asset and the digest
@@ -217,6 +217,7 @@ func (p *Prefetcher) casRemoteToLocalTransferPart(ctx context.Context, digests .
 			return nil, err
 		}
 		defer writer.Close()
+		logging.Debugf("streaming large blob from remote to local CAS (%s: %s; %d bytes)", p.digestFunction.String(), digests[0].Hex(p.digestFunction), digests[0].SizeBytes)
 
 		n, err := io.Copy(writer, reader)
 		if err != nil {
@@ -274,31 +275,44 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 		return nil
 	}
 
-	// the data is not in the local cache - check all remote sources we have
+	// the data is not in the local cache - check all remote sources we have:
+	// 1. remote CAS (knowing the digest)
+	// 2. Refill remote CAS from remote asset API
+	// 3. Direct download from URIs
+
+	var isAvailableRemotely bool
 	if p.remoteCAS != nil {
 		missingBlobs, err := p.remoteCAS.FindMissingBlobs(ctx, missingBlobs, p.digestFunction)
 		if err != nil {
 			return err
 		}
 		if len(missingBlobs) == 0 {
-			// the data is already in the remote CAS
-			return p.casRemoteToLocalTransfer(ctx, digest)
+			isAvailableRemotely = true
 		}
 	}
 
-	if p.remoteAsset != nil {
+	if !isAvailableRemotely && p.remoteAsset != nil && p.remoteCAS != nil {
 		// TODO: make timeout and oldestContentAccepted configurable.
 		// TODO: choose reasonable defaults.
 		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
 		if err != nil {
-			return err
+			logging.Errorf("failed to fetch asset remotely - falling back to direct download: %v", err)
+		} else {
+			if !digest.Equals(fetchBlobResponse.BlobDigest, p.digestFunction) {
+				return fmt.Errorf("expected digest %s, got %s", digest.Hex(p.digestFunction), fetchBlobResponse.BlobDigest.Hex(p.digestFunction))
+			}
+			isAvailableRemotely = true
 		}
-		if !digest.Equals(fetchBlobResponse.BlobDigest, p.digestFunction) {
-			return fmt.Errorf("expected digest %s, got %s", digest.Hex(p.digestFunction), fetchBlobResponse.BlobDigest.Hex(p.digestFunction))
-		}
+	}
+
+	if isAvailableRemotely {
 		// We now assume that the data is in the remote CAS.
 		// We simply download it from the remote CAS to the local CAS.
-		return p.casRemoteToLocalTransfer(ctx, digest)
+		if err = p.casRemoteToLocalTransfer(ctx, digest); err != nil {
+			logging.Errorf("failed to fetch remotely and transfer data to local CAS - falling back to direct download: %v", err)
+		} else {
+			return nil
+		}
 	}
 
 	// finally, fall back to using HTTP requests directly

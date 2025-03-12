@@ -89,6 +89,7 @@ func Run(ctx context.Context, args []string) {
 		if err != nil {
 			cmdhelper.FatalFmt("creating remote asset service at %s: %v", globalConfig.Remote, err)
 		}
+		logging.Basicf("REAPI server: %s", globalConfig.Remote)
 	} else {
 		logging.Warningf("No REAPI server specified. Running in local mode.")
 		// TODO: instead of nil, use an implementation that returns an error for all operations
