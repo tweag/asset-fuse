@@ -118,11 +118,18 @@ func Run(ctx context.Context, args []string) {
 	}
 	for path, leaf := range updatedPaths {
 		entry := manifest.Paths[path]
-		sriList, err := json.Marshal(leaf.Integrity.ToSRIList())
-		if err != nil {
+		sriList := leaf.Integrity.ToSRIList()
+		var sriMessage json.RawMessage
+		var marshalErr error
+		if len(sriList) == 1 {
+			sriMessage, marshalErr = json.Marshal(sriList[0])
+		} else {
+			sriMessage, marshalErr = json.Marshal(leaf.Integrity.ToSRIList())
+		}
+		if marshalErr != nil {
 			cmdhelper.FatalFmt("marshalling integrity: %v", err)
 		}
-		entry.Integrity = json.RawMessage(sriList)
+		entry.Integrity = json.RawMessage(sriMessage)
 		entry.Size = &leaf.SizeHint
 		manifest.Paths[path] = entry
 	}
