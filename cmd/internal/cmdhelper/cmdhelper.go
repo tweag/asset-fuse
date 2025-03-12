@@ -58,7 +58,8 @@ func SubstituteHome(p string) string {
 type FlagPreset uint
 
 const (
-	FlagPresetRemote = 1 << iota
+	FlagPresetNone   FlagPreset = 0
+	FlagPresetRemote            = 1 << iota
 	FlagPresetDiskCache
 	FlagPresetFUSE
 )

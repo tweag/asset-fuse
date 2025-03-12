@@ -113,7 +113,7 @@ func (m ManifestPaths) validate() error {
 // ManifestEntry describes a single entry in the (JSON) manifest.
 type ManifestEntry struct {
 	// URIs is a list of mirror urls pointing to the same artifact.
-	URIs []string `json:"uris"`
+	URIs []string `json:"uris,omitempty"`
 	// Integrity is a string or a list of strings containing the expected SRI digests of the artifact.
 	// See https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
 	// for more information.
@@ -233,6 +233,16 @@ func (t ManifestTree) Insert(leafPath string, leaf Leaf) error {
 	return nil
 }
 
+func ParseManifest(reader io.Reader) (Manifest, error) {
+	decoder := json.NewDecoder(reader)
+	decoder.DisallowUnknownFields()
+	var manifest Manifest
+	if err := decoder.Decode(&manifest); err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
+}
+
 func NewTree() ManifestTree {
 	return ManifestTree{
 		Root:  &Directory{Children: map[string]any{}},
@@ -241,10 +251,8 @@ func NewTree() ManifestTree {
 }
 
 func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algorithm) (ManifestTree, error) {
-	decoder := json.NewDecoder(reader)
-	decoder.DisallowUnknownFields()
-	var manifest Manifest
-	if err := decoder.Decode(&manifest); err != nil {
+	manifest, err := ParseManifest(reader)
+	if err != nil {
 		return ManifestTree{}, ManifestDecodeError{Inner: err}
 	}
 	paths := manifest.process()

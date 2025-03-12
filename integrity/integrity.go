@@ -337,6 +337,34 @@ func IntegrityFromString(integrity ...string) (Integrity, error) {
 	return out, nil
 }
 
+func IntegrityFromContent(r io.Reader, algorithms ...Algorithm) (Integrity, int64, error) {
+	if len(algorithms) == 0 {
+		return Integrity{}, 0, errors.New("no algorithms provided")
+	}
+	hashers := make([]hash.Hash, len(algorithms))
+	writers := make([]io.Writer, len(algorithms))
+	for i, alg := range algorithms {
+		hasher := alg.Hasher()
+		hashers[i] = hasher
+		writers[i] = hasher
+	}
+	multiWriter := io.MultiWriter(writers...)
+	n, err := io.Copy(multiWriter, r)
+	if err != nil {
+		return Integrity{}, 0, err
+	}
+	digests := make([]Digest, len(algorithms))
+	for i, alg := range algorithms {
+		digests[i] = NewDigest(hashers[i].Sum(nil), n, alg)
+	}
+
+	checksums := make([]Checksum, len(digests))
+	for i, digest := range digests {
+		checksums[i] = ChecksumFromDigest(digest, algorithms[i])
+	}
+	return IntegrityFromChecksums(checksums...), n, nil
+}
+
 func IntegrityFromChecksums(checksums ...Checksum) Integrity {
 	if len(checksums) == 0 {
 		return Integrity{}

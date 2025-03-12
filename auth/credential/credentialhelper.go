@@ -9,8 +9,6 @@ import (
 	"os/exec"
 	"sync"
 	"time"
-
-	"github.com/tweag/asset-fuse/internal/logging"
 )
 
 // Helper is the interface for a credential helper.
@@ -108,7 +106,6 @@ func RoundTripper(helper Helper) *AuthenticatingRoundTripper {
 }
 
 func (a *AuthenticatingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	logging.Debugf("authenticating request: %s %s", req.Method, req.URL)
 	headers, _, err := a.helper.Get(req.Context(), req.URL.String())
 	if err != nil {
 		return nil, err

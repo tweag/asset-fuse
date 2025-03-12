@@ -54,11 +54,6 @@ func Run(ctx context.Context, args []string) {
 	}
 
 	mountPoint := flagSet.Arg(0)
-	manifestFile, err := os.Open(globalConfig.ManifestPath)
-	if err != nil {
-		cmdhelper.FatalFmt("opening manifest file %s: %v", manifestFile, err)
-	}
-	defer manifestFile.Close()
 	digestFunction, ok := integrity.AlgorithmFromString(globalConfig.DigestFunction)
 	view, ok := manifest.ViewFromString(viewName)
 	if !ok {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tweag/asset-fuse/api"
+	"github.com/tweag/asset-fuse/fs/handle"
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/internal/logging"
@@ -53,37 +54,48 @@ func (p *Prefetcher) Start(ctx context.Context) (stopFunc func() error, err erro
 	panic("implement me")
 }
 
-// Stream creates a reader for an asset.
+// RandomAccessStream creates a reader for an asset.
 // It is used to implement reading from a leaf file handle.
 // Prefetcher can choose to stream the asset from any source.
 // The caller is responsible for closing the reader.
-// TODO: use information we get from streaming to fill local cache (or in-memory cache) if needed.
-// TODO: make the source configurable via a policy. This could mean to only stream from local cache,
-// instead of allowing the prefetcher to choose the source.
-func (p *Prefetcher) Stream(ctx context.Context, asset api.Asset, offset, limit int64) (io.ReadCloser, error) {
-	panic("implement me")
-}
-
-// RandomAccessStream creates a reader for an asset that supports random access (ReadAt).
-// It is used to implement reading from a leaf file handle.
-// Prefetcher can choose to stream the asset from any source.
-// The caller is responsible for closing the reader.
-// TODO: for now, we only support streaming from the local cache (so we have random access via file io).
-// TODO: Remote random access is theoretically possible, but requires intelligent caching / prefetching to be efficient.
+// TODO: for now, we only download small files eagerly. Instead, we could emply different hybrid strategies:
+// - Download small files eagerly.
+// - TODO: Stream large files from the remote CAS, but also download them to the local cache (in the background).
+// - TODO: For very large files, we could stream them from the remote CAS and store in-demand chunks in the local cache.
 func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset, offset, limit int64) (readerAtCloser, error) {
-	// since we only have random access to the local cache,
-	// we just materialize the data and return a reader for the local cache.
-	if err := p.Materialize(ctx, asset); err != nil {
+	digest, err := p.getOrLearnDigest(ctx, asset)
+	if err != nil {
+		return nil, fmt.Errorf("obtaining digest to stream asset: %w", err)
+	}
+
+	// check if materializing is efficient or necessary
+	if digest.SizeBytes < byteStreamThreshold || p.remoteCAS == nil {
+		// One of the following conditions is true:
+		// - The file is small enough to download in a single request
+		// - We don't have a remote CAS to stream from
+		if err := p.Materialize(ctx, asset); err != nil {
+			return nil, err
+		}
+		return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, digest.SizeBytes))
+	}
+
+	// check if blob is already in the local cache
+	missingLocal, err := p.localCAS.FindMissingBlobs(ctx, []integritypkg.Digest{digest}, p.digestFunction)
+	if err != nil {
 		return nil, err
 	}
-
-	digest, digestIsKnown := p.checksumCache.FromIntegrity(asset.Integrity)
-
-	if !digestIsKnown {
-		// unable to construct the digest in advance
-		panic("implement random access streaming when the digest is not known in advance")
+	if len(missingLocal) == 0 {
+		// The data is already in the local cache.
+		return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, digest.SizeBytes))
 	}
-	return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, digest.SizeBytes))
+
+	// We can and should stream the data from the remote CAS.
+	// use handle.NewStreamingFileHandle to stream data from CAS.
+	if _, err = p.Prefetch(ctx, asset); err != nil {
+		return nil, err
+	}
+	logging.Debugf("streaming asset from remote CAS (%s: %s; %d bytes)", p.digestFunction.String(), digest.Hex(p.digestFunction), digest.SizeBytes)
+	return handle.NewStreamingFileHandle(p.remoteCAS, digest, p.digestFunction, offset), nil
 }
 
 // Prefetch ensures that the asset referenced by the given URIs and integrity is available in the remote CAS.
@@ -324,15 +336,65 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 	return nil
 }
 
+func (p *Prefetcher) getOrLearnDigest(ctx context.Context, asset api.Asset) (digest integritypkg.Digest, err error) {
+	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
+		return digest, nil
+	}
+
+	defer func() {
+		if digest.Uninitialized() {
+			return
+		}
+		// any digest we learn is stored in the cache
+		// we learned a new association between the asset and the digest
+		var integrityStrings []string
+		for integrityString := range asset.Integrity.Items() {
+			integrityStrings = append(integrityStrings, integrityString.ToSRI())
+		}
+		logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, digest.Hex(p.digestFunction), digest.SizeBytes)
+		p.checksumCache.PutIntegrity(asset.Integrity, digest)
+	}()
+
+	if p.remoteAsset != nil {
+		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
+		if err != nil {
+			logging.Errorf("failed to learn digest via Remote Asset API - falling back to direct download: %v", err)
+		} else {
+			return fetchBlobResponse.BlobDigest, nil
+		}
+	}
+
+	if p.downloader != nil {
+		resp, err := p.downloader.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
+		if err != nil {
+			logging.Errorf("failed to learn digest via direct download: %v", err)
+		} else {
+			return resp.BlobDigest, nil
+		}
+	}
+	return integritypkg.Digest{}, errors.New("failed to learn digest")
+}
+
 var (
 	noFetchTimeout                 = time.Duration(0)
 	noFetchOldestContentAcceptable = time.Unix(0, 0).UTC()
 )
 
-// byteStreamThreshold is the threshold at which we switch
-// fetching data in a single request to streaming (1 MiB).
-//
-// This value was chosen arbitrarily.
-// TODO: make this configurable.
-// TODO: use capabilities API to determine the best value.
-const byteStreamThreshold = 1 << 20
+const (
+	// byteStreamThreshold is the threshold at which we switch
+	// fetching data in a single request to streaming (1 MiB).
+	//
+	// This value was chosen arbitrarily.
+	// TODO: make this configurable.
+	// TODO: use capabilities API to determine the best value.
+	byteStreamThreshold = 1 << 20
+	// downloadLimit is the maximum blob size that we consider adding to the local cache (64 MiB).
+	// If the blob is larger than this, we will always stream it.
+	// Smaller files may still be streamed, but the prefetcher can try
+	// to make them available in the local cache asynchronously.
+	// Very small files (below byteStreamThreshold) are always fetched
+	// in a single request and will always be in the local cache.
+	//
+	// This value was chosen arbitrarily.
+	downloadLimit = 1 << 26
+)

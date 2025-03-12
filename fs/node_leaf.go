@@ -161,15 +161,8 @@ func (l *leaf) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 
 	asset := l.toAsset()
 
-	// We are about the read the file, so we materialize the data.
-	// TODO: this is blocking and fills the local cache with the
-	// full contents of the leaf - optimize this.
-	if err := root.prefetcher.Materialize(ctx, asset); err != nil {
-		logging.Errorf("materialize(%s): %v", l.Path(l.Root()), err)
-		return nil, 0, syscall.EIO
-	}
+	// TODO: We are about the read the file, so it would be a good place to prefetch the file into the local cache (in the background).
 
-	// TODO: properly initialize the file handle if needed
 	reader, err := root.prefetcher.RandomAccessStream(ctx, asset, 0, 0)
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok {
