@@ -82,7 +82,10 @@ func protoFetchBlobRequest(
 	// we need to merge integrity and qualifiers a list of unique qualifiers
 	uniqueQualifiers := make(map[string]string)
 	maps.Copy(uniqueQualifiers, qualifiers)
-	// in theory, it shouldn't matter which algorithm we use for the sri.
+
+	// In theory, we would like to send all checksums we know and let the server
+	// decide which one to use:
+	// uniqueQualifiers["checksum.sri"] = integrity.ToSRIString()
 	// After looking at concrete implementations of the remote asset API,
 	// it seems that sending only the sri for the digest function is most widely supported.
 	// If that's not available, we try them all (with hardcoded preference).

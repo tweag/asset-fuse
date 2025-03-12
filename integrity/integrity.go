@@ -131,7 +131,10 @@ type Checksum struct {
 	Hash      []byte
 }
 
-func ChecksumFromSRI(integrity string) (Checksum, error) {
+// singleChecksumFromSRI parses a single checksum from a Subresource Integrity (SRI) string.
+// This function explicitly supports only a single hash-expression (hash-algo "-" base64-value).
+// Parsing a full SRI string with multiple hashes (integrity-metadata) is done in IntegrityFromString.
+func singleChecksumFromSRI(integrity string) (Checksum, error) {
 	var checksum Checksum
 	var expectedByteSize int
 	switch integrity[:7] {
@@ -278,39 +281,57 @@ func (i Integrity) Equivalent(other Integrity) bool {
 	return matchingChecksums > 0
 }
 
+// ToSRIList returns a list of Subresource Integrity (SRI) strings for the integrity.
+// Each SRI string contains a single checksum.
+func (i Integrity) ToSRIList() []string {
+	var parts []string
+	for checksum := range i.Items() {
+		parts = append(parts, checksum.ToSRI())
+	}
+	return parts
+}
+
+// ToSRIString returns a single string with all Subresource Integrity (SRI) strings for the integrity.
+// The checksums are separated by whitespace.
+func (i Integrity) ToSRIString() string {
+	return strings.Join(i.ToSRIList(), " ")
+}
+
 func IntegrityFromString(integrity ...string) (Integrity, error) {
 	if len(integrity) == 0 {
 		return Integrity{}, nil
 	}
 	out := Integrity{}
 	for i, sri := range integrity {
-		c, err := ChecksumFromSRI(sri)
-		if err != nil {
-			return Integrity{}, fmt.Errorf("parsing integrity string %d: %w", i, err)
-		}
-		switch c.Algorithm {
-		case SHA256:
-			if out.sha256.Hash != nil {
-				return Integrity{}, errors.New("duplicate sha256 checksums in integrity strings")
+		for _, hashExpression := range strings.Fields(sri) {
+			c, err := singleChecksumFromSRI(hashExpression)
+			if err != nil {
+				return Integrity{}, fmt.Errorf("parsing integrity string %d: %w", i, err)
 			}
-			out.sha256 = c
-		case SHA384:
-			if out.sha384.Hash != nil {
-				return Integrity{}, errors.New("duplicate sha384 checksums in integrity strings")
+			switch c.Algorithm {
+			case SHA256:
+				if out.sha256.Hash != nil {
+					return Integrity{}, errors.New("duplicate sha256 checksums in integrity strings")
+				}
+				out.sha256 = c
+			case SHA384:
+				if out.sha384.Hash != nil {
+					return Integrity{}, errors.New("duplicate sha384 checksums in integrity strings")
+				}
+				out.sha384 = c
+			case SHA512:
+				if out.sha512.Hash != nil {
+					return Integrity{}, errors.New("duplicate sha512 checksums in integrity strings")
+				}
+				out.sha512 = c
+			case Blake3:
+				if out.blake3.Hash != nil {
+					return Integrity{}, errors.New("duplicate blake3 checksums in integrity strings")
+				}
+				out.blake3 = c
+			default:
+				return Integrity{}, fmt.Errorf("unsupported algorithm in integrity string: %s", c.Algorithm)
 			}
-			out.sha384 = c
-		case SHA512:
-			if out.sha512.Hash != nil {
-				return Integrity{}, errors.New("duplicate sha512 checksums in integrity strings")
-			}
-			out.sha512 = c
-		case Blake3:
-			if out.blake3.Hash != nil {
-				return Integrity{}, errors.New("duplicate blake3 checksums in integrity strings")
-			}
-			out.blake3 = c
-		default:
-			return Integrity{}, fmt.Errorf("unsupported algorithm in integrity string: %s", c.Algorithm)
 		}
 	}
 	return out, nil
