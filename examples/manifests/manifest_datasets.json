@@ -2,56 +2,64 @@
   "paths": {
     "air-quality/Air_Quality.csv": {
       "uris": [
-        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.csv?accessType=DOWNLOAD"
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.csv?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:30367f13b77119109a4d0aaac5f75e85885a87d565b623b455af831657115ee8"
       ],
       "integrity": "sha256-MDZ/E7dxGRCaTQqqxfdehYhah9VltiO0Va+DFlcRXug=",
       "size": 2103037
     },
     "air-quality/Air_Quality.json": {
       "uris": [
-        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.json?accessType=DOWNLOAD"
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.json?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:df79517981b2eae9b1dede186036bd489a6a30713d9aef3f93558167a5d30ba2"
       ],
       "integrity": "sha256-33lReYGy6umx3t4YYDa9SJpqMHE9mu8/k1WBZ6XTC6I=",
       "size": 5015639
     },
     "air-quality/Air_Quality.rdf": {
       "uris": [
-        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.rdf?accessType=DOWNLOAD"
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.rdf?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:bbe3f1f909775da60590a5f9615818eca1ed6c1a92d1c0cfc948c659a7ada72f"
       ],
       "integrity": "sha256-u+Px+Ql3XaYFkKX5YVgY7KHtbBqS0cDPyUjGWaetpy8=",
       "size": 376752
     },
     "air-quality/Air_Quality.xml": {
       "uris": [
-        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.xml?accessType=DOWNLOAD"
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.xml?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:cc2dfc96a1af6ff6d106b313d301ff88480e28c728ca7079f1a5bfc3ba3d621c"
       ],
       "integrity": "sha256-zC38lqGvb/bRBrMT0wH/iEgOKMcoynB58aW/w7o9Yhw=",
       "size": 10033153
     },
     "meteorite-landings/Meteorite_Landings.csv": {
       "uris": [
-        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.csv?accessType=DOWNLOAD"
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.csv?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:5b4c6a3596f177b3fe8b722e8a7e5f98f05628fe2167ec3bd007acdeb77036b5"
       ],
       "integrity": "sha256-W0xqNZbxd7P+i3Iuin5fmPBWKP4hZ+w70Aes3rdwNrU=",
       "size": 3952161
     },
     "meteorite-landings/Meteorite_Landings.json": {
       "uris": [
-        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.json?accessType=DOWNLOAD"
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.json?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:c36a6d71877ad4c3d2d525aca6210edba415567d8ebd90b2d1b389d238947193"
       ],
       "integrity": "sha256-w2ptcYd61MPS1SWspiEO26QVVn2OvZCy0bOJ0jiUcZM=",
       "size": 12614335
     },
     "meteorite-landings/Meteorite_Landings.rdf": {
       "uris": [
-        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.rdf?accessType=DOWNLOAD"
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.rdf?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:b94b2b0d94e223f4ec9b2a44aa1e8599091922c883513787a5c0de367df3e05d"
       ],
       "integrity": "sha256-uUsrDZTiI/TsmypEqh6FmQkZIsiDUTeHpcDeNn3z4F0=",
       "size": 354195
     },
     "meteorite-landings/Meteorite_Landings.xml": {
       "uris": [
-        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.xml?accessType=DOWNLOAD"
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.xml?accessType=DOWNLOAD",
+        "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:5d4cd8c11338dc0aa7c06ca74907b30f755faed17c6bca53171bf9ec18b0a2ca"
       ],
       "integrity": "sha256-XUzYwRM43AqnwGynSQezD3VfrtF8a8pTFxv57Biwoso=",
       "size": 19136456
