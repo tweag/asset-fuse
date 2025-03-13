@@ -1,0 +1,8 @@
+exports_files(glob(["mnt/**"]))
+
+genrule(
+    name = "air_quality_line_count",
+    srcs = ["//:mnt/air-quality/Air_Quality.csv"],
+    outs = ["air_quality_line_count.txt"],
+    cmd = "wc -l $(location //:mnt/air-quality/Air_Quality.csv) > $@",
+)

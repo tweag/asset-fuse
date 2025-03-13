@@ -1,0 +1,6 @@
+.bazelrc.user
+bazel-*
+MODULE.bazel.lock
+mnt/**
+!mnt/.gitkeep
+/repository_cache

@@ -1,0 +1,6 @@
+genrule(
+    name = "air_quality_line_count",
+    srcs = ["@air_quality_csv//file:file"],
+    outs = ["air_quality_line_count_slow.txt"],
+    cmd = "wc -l $(location @air_quality_csv//file:file) > $@",
+)
