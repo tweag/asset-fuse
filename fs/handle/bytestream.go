@@ -26,7 +26,9 @@ func (b *byteStreamReadSeekCloser) Read(p []byte) (n int, err error) {
 		b.reader = reader
 		b.cancel = cancel
 	}
-	return b.reader.Read(p)
+	n, err = b.reader.Read(p)
+	b.offset += int64(n)
+	return n, err
 }
 
 func (b *byteStreamReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
