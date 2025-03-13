@@ -28,22 +28,9 @@ func (v View) Tree(paths ManifestPaths, digestFunction integrity.Algorithm) (Man
 func defaultTreeView(paths ManifestPaths, _ integrity.Algorithm) (ManifestTree, error) {
 	tree := NewTree()
 	for path, entry := range paths {
-		sriList, err := entry.getIntegrity()
+		leaf, err := LeafFromEntry(entry)
 		if err != nil {
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
-		leafIntegrity, err := integrity.IntegrityFromString(sriList...)
-		if err != nil {
-			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
-		leaf := Leaf{
-			URIs:       entry.URIs,
-			Integrity:  leafIntegrity,
-			SizeHint:   -1,
-			Executable: entry.Executable,
-		}
-		if entry.Size != nil {
-			leaf.SizeHint = *entry.Size
 		}
 		if err := tree.Insert(path, leaf); err != nil {
 			return ManifestTree{}, fmt.Errorf("inserting %s from manifest into tree: %w", path, err)
@@ -56,23 +43,10 @@ func defaultTreeView(paths ManifestPaths, _ integrity.Algorithm) (ManifestTree, 
 func uriTreeView(paths ManifestPaths, _ integrity.Algorithm) (ManifestTree, error) {
 	tree := NewTree()
 	for path, entry := range paths {
-		sriList, err := entry.getIntegrity()
-		if err != nil {
-			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
-		leafIntegrity, err := integrity.IntegrityFromString(sriList...)
-		if err != nil {
-			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
-		}
 		for _, uri := range entry.URIs {
-			leaf := Leaf{
-				URIs:       []string{uri},
-				Integrity:  leafIntegrity,
-				SizeHint:   -1,
-				Executable: entry.Executable,
-			}
-			if entry.Size != nil {
-				leaf.SizeHint = *entry.Size
+			leaf, err := LeafFromEntry(entry)
+			if err != nil {
+				return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
 			}
 
 			uriPath, ok := pathForURIView(uri)

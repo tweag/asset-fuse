@@ -69,11 +69,6 @@ func Run(ctx context.Context, args []string) {
 		cmdhelper.FatalFmt("invalid digest function: %s", globalConfig.DigestFunction)
 	}
 
-	view, ok := manifest.ViewFromString("default")
-	if !ok {
-		cmdhelper.FatalFmt("invalid view: %s", "default")
-	}
-
 	targets := flagSet.Args()
 	if all {
 		logging.Basicf("Updating all targets")
@@ -86,8 +81,15 @@ func Run(ctx context.Context, args []string) {
 		cmdhelper.FatalFmt("reading manifest file: %v", err)
 	}
 	manifestFile.Seek(0, 0)
-	initialManifestTree, err := manifest.TreeFromManifest(bytes.NewReader(rawManifest), view, digestFunction)
+	initialManifest, err := manifest.ParseManifest(bytes.NewReader(rawManifest))
 	if err != nil {
+		cmdhelper.FatalFmt("parsing manifest: %v", err)
+	}
+	paths := initialManifest.Process()
+	var validationErr manifest.ValidationError
+	if errors.As(err, &validationErr) {
+		logging.Warningf("original manifest is invalid or incomplete: %v", err)
+	} else if err != nil {
 		cmdhelper.FatalFmt("parsing manifest: %v", err)
 	}
 
@@ -101,7 +103,7 @@ func Run(ctx context.Context, args []string) {
 
 	httpClient := &http.Client{Transport: credential.RoundTripper(credentialHelper)}
 
-	updatedPaths, unchangedPaths, err := updateManifest(ctx, initialManifestTree, targets, digestFunction, httpClient)
+	updatedPaths, unchangedPaths, err := updateManifest(ctx, paths, targets, digestFunction, httpClient)
 	if err != nil {
 		cmdhelper.FatalFmt("updating manifest: %v", err)
 	}
@@ -141,20 +143,26 @@ func Run(ctx context.Context, args []string) {
 	os.WriteFile(globalConfig.ManifestPath, updatedRawManifest, 0o644)
 }
 
-func updateManifest(ctx context.Context, oldManifest manifest.ManifestTree, targets []string, digestFunction integrity.Algorithm, httpClient *http.Client) (updatedPaths map[string]manifest.Leaf, unchangedPaths []string, err error) {
+func updateManifest(ctx context.Context, oldPaths manifest.ManifestPaths, targets []string, digestFunction integrity.Algorithm, httpClient *http.Client) (updatedPaths map[string]manifest.Leaf, unchangedPaths []string, err error) {
 	targetMap := make(map[string]manifest.Leaf)
 	if len(targets) == 0 {
 		// "--all" mode
-		for p, leaf := range oldManifest.Leafs {
-			targetMap[p] = *leaf
+		for p, entry := range oldPaths {
+			targetMap[p], err = manifest.LeafFromEntry(entry)
+			if err != nil {
+				return nil, nil, fmt.Errorf("creating leaf from entry %s: %v", p, err)
+			}
 		}
 	} else {
 		for _, target := range targets {
-			leaf, ok := oldManifest.Leafs[target]
+			entry, ok := oldPaths[target]
 			if !ok {
 				return nil, nil, fmt.Errorf("target not found: %s", target)
 			}
-			targetMap[target] = *leaf
+			targetMap[target], err = manifest.LeafFromEntry(entry)
+			if err != nil {
+				return nil, nil, fmt.Errorf("creating leaf from entry %s: %v", target, err)
+			}
 		}
 	}
 

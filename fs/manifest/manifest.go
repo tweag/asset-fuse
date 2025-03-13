@@ -18,10 +18,10 @@ import (
 // Manifest describes the JSON manifest file format.
 type Manifest struct {
 	Paths        ManifestPaths `json:"paths"`
-	URITemplates []string      `json:"uri_templates"`
+	URITemplates []string      `json:"uri_templates,omitempty"`
 }
 
-func (m *Manifest) process() ManifestPaths {
+func (m *Manifest) Process() ManifestPaths {
 	paths := make(ManifestPaths, len(m.Paths))
 	for path, entry := range m.Paths {
 		if len(entry.URIs) == 0 {
@@ -102,10 +102,10 @@ func (m ManifestPaths) validate() error {
 		}
 	}
 	if len(warnings) > 0 {
-		logging.Warningf("manifest validation warnings: \n  %s", strings.Join(warnings, "\n  "))
+		logging.Warningf("manifest validation warnings:\n  %s", strings.Join(warnings, "\n  "))
 	}
 	if len(issues) > 0 {
-		return errors.New("manifest validation failed: \n  " + strings.Join(issues, "\n  "))
+		return ValidationError{issues: issues}
 	}
 	return nil
 }
@@ -143,6 +143,14 @@ func (e *ManifestEntry) getIntegrity() ([]string, error) {
 	return integrity, nil
 }
 
+type ValidationError struct {
+	issues []string
+}
+
+func (e ValidationError) Error() string {
+	return "manifest validation failed:\n  " + strings.Join(e.issues, "\n  ")
+}
+
 // Leaf: Same as ManifestEntry, but with Size being a value instead of a pointer.
 // This is used in the tree representation.
 type Leaf struct {
@@ -154,6 +162,27 @@ type Leaf struct {
 	// A negative value indicates that the size is unknown.
 	SizeHint   int64
 	Executable bool
+}
+
+func LeafFromEntry(entry ManifestEntry) (Leaf, error) {
+	integrityStrings, err := entry.getIntegrity()
+	if err != nil {
+		return Leaf{}, err
+	}
+	leafIntegrity, err := integrity.IntegrityFromString(integrityStrings...)
+	if err != nil {
+		return Leaf{}, err
+	}
+	sizeHint := int64(-1)
+	if entry.Size != nil {
+		sizeHint = *entry.Size
+	}
+	return Leaf{
+		URIs:       entry.URIs,
+		Integrity:  leafIntegrity,
+		SizeHint:   sizeHint,
+		Executable: entry.Executable,
+	}, nil
 }
 
 func (l *Leaf) Mode() uint32 {
@@ -255,7 +284,7 @@ func TreeFromManifest(reader io.Reader, view View, digestFunction integrity.Algo
 	if err != nil {
 		return ManifestTree{}, ManifestDecodeError{Inner: err}
 	}
-	paths := manifest.process()
+	paths := manifest.Process()
 	if err := paths.validate(); err != nil {
 		return ManifestTree{}, err
 	}
