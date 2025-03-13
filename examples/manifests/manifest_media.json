@@ -134,6 +134,7 @@
     }
   },
   "uri_templates": [
-    "https://mir-s3-cdn-cf.behance.net/project_modules/max_1200/{basename}"
+    "https://mir-s3-cdn-cf.behance.net/project_modules/max_1200/{basename}",
+    "https://ghcr.io/v2/malt3/asset-fuse-cas/blobs/sha256:{sha256}"
   ]
 }

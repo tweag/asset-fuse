@@ -26,6 +26,7 @@
     "http://unencrypted.acme.corp/{dirname}/assets/{stem}_{size}{ext}",
     "https://storage.googleapis.com/acme-bucket/{path_urlencoded}",
     "https://acme-bucket.s3.amazonaws.com/{path}",
-    "https://acme.r2.cloudflarestorage.com/acme-bucket/{path}"
+    "https://acme.r2.cloudflarestorage.com/acme-bucket/{path}",
+    "https://ghcr.io/v2/acme-corp/image-name/blobs/sha256:{sha256}"
   ]
 }

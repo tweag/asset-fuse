@@ -1,0 +1,60 @@
+{
+  "paths": {
+    "air-quality/Air_Quality.csv": {
+      "uris": [
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.csv?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-MDZ/E7dxGRCaTQqqxfdehYhah9VltiO0Va+DFlcRXug=",
+      "size": 2103037
+    },
+    "air-quality/Air_Quality.json": {
+      "uris": [
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.json?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-33lReYGy6umx3t4YYDa9SJpqMHE9mu8/k1WBZ6XTC6I=",
+      "size": 5015639
+    },
+    "air-quality/Air_Quality.rdf": {
+      "uris": [
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.rdf?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-u+Px+Ql3XaYFkKX5YVgY7KHtbBqS0cDPyUjGWaetpy8=",
+      "size": 376752
+    },
+    "air-quality/Air_Quality.xml": {
+      "uris": [
+        "https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.xml?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-zC38lqGvb/bRBrMT0wH/iEgOKMcoynB58aW/w7o9Yhw=",
+      "size": 10033153
+    },
+    "meteorite-landings/Meteorite_Landings.csv": {
+      "uris": [
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.csv?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-W0xqNZbxd7P+i3Iuin5fmPBWKP4hZ+w70Aes3rdwNrU=",
+      "size": 3952161
+    },
+    "meteorite-landings/Meteorite_Landings.json": {
+      "uris": [
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.json?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-w2ptcYd61MPS1SWspiEO26QVVn2OvZCy0bOJ0jiUcZM=",
+      "size": 12614335
+    },
+    "meteorite-landings/Meteorite_Landings.rdf": {
+      "uris": [
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.rdf?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-uUsrDZTiI/TsmypEqh6FmQkZIsiDUTeHpcDeNn3z4F0=",
+      "size": 354195
+    },
+    "meteorite-landings/Meteorite_Landings.xml": {
+      "uris": [
+        "https://data.nasa.gov/api/views/gh4g-9sfh/rows.xml?accessType=DOWNLOAD"
+      ],
+      "integrity": "sha256-XUzYwRM43AqnwGynSQezD3VfrtF8a8pTFxv57Biwoso=",
+      "size": 19136456
+    }
+  }
+}
