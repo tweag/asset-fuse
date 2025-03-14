@@ -50,6 +50,7 @@ type RandomAccessStream interface {
 }
 
 type ReaderAtCloser interface {
+	io.Reader
 	io.ReaderAt
 	io.Closer
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/cmd/download"
+	"github.com/tweag/asset-fuse/cmd/export"
 	"github.com/tweag/asset-fuse/cmd/manifest"
 	"github.com/tweag/asset-fuse/cmd/mount"
 	"github.com/tweag/asset-fuse/internal/logging"
@@ -17,7 +18,8 @@ const usage = `Usage: asset-fuse [COMMAND] [ARGS...]
 Commands:
   mount     Mount the filesystem
   manifest  Provides operations on the manifest
-  download  Fetches assets to the disk cache (or remote cache)`
+  download  Fetches assets to the disk cache (or remote cache)
+  export    Exports the manifest to a directory or archive`
 
 func Run(ctx context.Context, args []string) {
 	setLogLevel()
@@ -33,6 +35,8 @@ func Run(ctx context.Context, args []string) {
 		manifest.Run(ctx, args[2:])
 	case "download":
 		download.Run(ctx, args[2:])
+	case "export":
+		export.Run(ctx, args[2:])
 	default:
 		printUsage()
 	}
