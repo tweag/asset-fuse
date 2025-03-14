@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/status"
 )
@@ -46,6 +47,50 @@ func (d *Disk) FindMissingBlobs(ctx context.Context, blobDigests []integrity.Dig
 		}
 	}
 	return missing, nil
+}
+
+// FindAssets returns the digests of an asset that are present in the CAS.
+// An empty map means that the digest is missing.
+// This is an optimization over FindMissingBlobs,
+// as it works without knowing the size of the asset in advance.
+func (d *Disk) FindAsset(ctx context.Context, asset api.Asset) (map[integrity.Algorithm]integrity.Digest, error) {
+	var digests map[integrity.Algorithm]integrity.Digest
+	for checksum := range asset.Integrity.Items() {
+		fileInfo, err := os.Stat(d.blobPath(checksum))
+		if err == nil && fileInfo.Mode().IsRegular() {
+			if digests == nil {
+				digests = make(map[integrity.Algorithm]integrity.Digest)
+			}
+			digests[checksum.Algorithm] = integrity.NewDigest(checksum.Hash, fileInfo.Size(), checksum.Algorithm)
+		} else {
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+	}
+	return digests, nil
+}
+
+// FindAssets returns the digests of an asset that are present in the CAS.
+// An empty map means that the digest is missing.
+// This is an optimization over FindMissingBlobs,
+// as it works without knowing the size of the asset in advance.
+func (d *Disk) FindAssetWithAlgorithm(ctx context.Context, asset api.Asset, digestFunction integrity.Algorithm) (integrity.Digest, bool, error) {
+	checksum, ok := asset.Integrity.ChecksumForAlgorithm(digestFunction)
+	if !ok {
+		return integrity.Digest{}, false, nil
+	}
+	fileInfo, err := os.Stat(d.blobPath(checksum))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return integrity.Digest{}, false, nil
+		}
+		return integrity.Digest{}, false, err
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return integrity.Digest{}, false, fmt.Errorf("blob path %s is not a regular file", d.blobPath(checksum))
+	}
+	return integrity.NewDigest(checksum.Hash, fileInfo.Size(), digestFunction), true, nil
 }
 
 func (d *Disk) BatchReadBlobs(ctx context.Context, blobDigests []integrity.Digest, digestFunction integrity.Algorithm) (BatchReadBlobsResponse, error) {

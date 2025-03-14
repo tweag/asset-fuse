@@ -137,7 +137,7 @@ func (p *Prefetcher) PrefetchRemote(ctx context.Context, asset api.Asset) (integ
 		return integritypkg.Digest{}, errors.New("Prefetch called without remote asset service")
 	}
 
-	knownDigest, digestIsKnown := p.checksumCache.FromIntegrity(asset.Integrity)
+	knownDigest, digestIsKnown := p.checksumCache.FromIntegrityWithAlgorithm(asset.Integrity, p.digestFunction)
 
 	if p.remoteCAS != nil && digestIsKnown {
 		// check if the remote cache has the data already (without fetching)
@@ -183,13 +183,28 @@ func (p *Prefetcher) MaterializeLocal(ctx context.Context, asset api.Asset) (int
 		return integrity.Digest{}, errors.New("Materialize called without disk cache")
 	}
 
-	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
+	if digest, ok := p.checksumCache.FromIntegrityWithAlgorithm(asset.Integrity, p.digestFunction); ok {
 		// we know the hash and size of the expected data
 		// we can construct the digest in advance
 		return digest, p.materializeWithDigest(ctx, asset, digest)
 	}
 
 	// we don't know the hash and size of the expected data
+	// first try to learn from disk cache (if available)
+	if diskDigest, ok, err := p.localCAS.FindAssetWithAlgorithm(ctx, asset, p.digestFunction); err != nil {
+		return integrity.Digest{}, err
+	} else if ok {
+		// we learned a new association between the asset and the digest
+		var integrityStrings []string
+		for integrityString := range asset.Integrity.Items() {
+			integrityStrings = append(integrityStrings, integrityString.ToSRI())
+		}
+		logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, diskDigest.Hex(p.digestFunction), diskDigest.SizeBytes)
+		p.checksumCache.PutIntegrity(asset.Integrity, diskDigest)
+		return diskDigest, nil
+	}
+
+	// disk cache doesn't have the data
 	// we need to fetch the data to learn the hash and size
 	if digest, err := p.PrefetchRemote(ctx, asset); err != nil {
 		logging.Debugf("materializing asset %v failed when trying to prefetch remotely - falling back to direct download: %v", asset, err)
@@ -362,9 +377,7 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 }
 
 func (p *Prefetcher) getOrLearnDigest(ctx context.Context, asset api.Asset) (digest integritypkg.Digest, err error) {
-	// TODO: use special access to local cache to infer the digest (if materialized)
-
-	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
+	if digest, ok := p.checksumCache.FromIntegrityWithAlgorithm(asset.Integrity, p.digestFunction); ok {
 		return digest, nil
 	}
 
@@ -382,10 +395,15 @@ func (p *Prefetcher) getOrLearnDigest(ctx context.Context, asset api.Asset) (dig
 		p.checksumCache.PutIntegrity(asset.Integrity, digest)
 	}()
 
-	// TODO: for offline use, we should check if the asset is known locally
-	// This way, we can avoid making network requests.
-	// if p.localCAS != nil {
-	// }
+	if p.localCAS != nil {
+		diskDigest, ok, err := p.localCAS.FindAssetWithAlgorithm(ctx, asset, p.digestFunction)
+		if err != nil {
+			return integritypkg.Digest{}, err
+		}
+		if ok {
+			return diskDigest, nil
+		}
+	}
 
 	if p.remoteAsset != nil {
 		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)

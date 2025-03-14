@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/service/status"
 )
@@ -22,6 +23,8 @@ type LocalCAS interface {
 	CAS
 	RandomAccessStream
 	ImportBlob(ctx context.Context, prevalidatedIntegrity integrity.Integrity, optionalDigest integrity.Digest, digestFunction integrity.Algorithm, data io.Reader) (integrity.Digest, error)
+	FindAsset(ctx context.Context, asset api.Asset) (map[integrity.Algorithm]integrity.Digest, error)
+	FindAssetWithAlgorithm(ctx context.Context, asset api.Asset, digestFunction integrity.Algorithm) (integrity.Digest, bool, error)
 }
 
 type Checker interface {

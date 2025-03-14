@@ -59,14 +59,26 @@ func (c *ChecksumCache) PutSlice(hash []byte, identifier byte, digest Digest) {
 	c.shards[shard][key.Sum64()] = digest
 }
 
-func (c *ChecksumCache) FromIntegrity(integrity Integrity) (Digest, bool) {
+func (c *ChecksumCache) FromIntegrity(integrity Integrity) map[Algorithm]Digest {
+	var digests map[Algorithm]Digest
 	for checksum := range integrity.Items() {
 		digest, ok := c.GetSlice(checksum.Hash, checksum.Algorithm.Identifier())
 		if ok {
-			return digest, true
+			if digests == nil {
+				digests = make(map[Algorithm]Digest)
+			}
+			digests[checksum.Algorithm] = digest
 		}
 	}
-	return Digest{}, false
+	return digests
+}
+
+func (c *ChecksumCache) FromIntegrityWithAlgorithm(integrity Integrity, digestFunction Algorithm) (Digest, bool) {
+	checksum, ok := integrity.ChecksumForAlgorithm(digestFunction)
+	if !ok {
+		return Digest{}, false
+	}
+	return c.GetSlice(checksum.Hash, checksum.Algorithm.Identifier())
 }
 
 func (c *ChecksumCache) FromChecksum(checksum Checksum) (Digest, bool) {

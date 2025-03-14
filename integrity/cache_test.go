@@ -17,7 +17,7 @@ func TestCacheStoreAndLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, ok := c.FromIntegrity(hashes)
+	_, ok := c.FromIntegrityWithAlgorithm(hashes, integrity.SHA256)
 	if ok {
 		t.Fatal("cache should be empty")
 	}
@@ -30,7 +30,7 @@ func TestCacheStoreAndLoad(t *testing.T) {
 	}, knownSize, integrity.SHA256)
 	c.PutIntegrity(hashes, expectedDigest)
 
-	gotDigest, ok := c.FromIntegrity(hashes)
+	gotDigest, ok := c.FromIntegrityWithAlgorithm(hashes, integrity.SHA256)
 	if !ok {
 		t.Fatal("cache should contain the digest")
 	}
