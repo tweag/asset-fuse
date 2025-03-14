@@ -51,7 +51,7 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 		ops = &leaf{
 			manifestNode: child,
 		}
-		size, ok := leafSize(ctx, child, root.digestAlgorithm, root)
+		size, ok := leafSize(ctx, child, root)
 		if !ok {
 			logging.Warningf("%s: reporting unknown size - consider adding the size to the manifest if it is known", path.Join(n.Path(n.Root()), name))
 			size = 0

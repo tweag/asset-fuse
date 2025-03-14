@@ -30,17 +30,21 @@ import (
 // TODO: for now, the prefetcher doesn't cache a lot of information in memory.
 // This is a proof of concept and should be improved in the future.
 type Prefetcher struct {
-	remoteCAS      casService.CAS
-	localCAS       casService.LocalCAS
-	remoteAsset    assetService.Asset
-	downloader     *downloader.Downloader
+	remoteCAS   casService.CAS
+	localCAS    casService.LocalCAS
+	remoteAsset assetService.Asset
+	downloader  *downloader.Downloader
+
+	remoteDownloadQueue *workQueue[api.Asset, integrity.Digest]
+	localDownloadQueue  *workQueue[api.Asset, integrity.Digest]
+
 	checksumCache  *integrity.ChecksumCache
 	digestFunction integritypkg.Algorithm
 }
 
 // NewPrefetcher creates a new Prefetcher.
 func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remoteAsset assetService.Asset, downloader *downloader.Downloader, checksumCache *integritypkg.ChecksumCache, digestFunction integritypkg.Algorithm) *Prefetcher {
-	return &Prefetcher{
+	p := &Prefetcher{
 		localCAS:       localCAS,
 		remoteCAS:      remoteCAS,
 		remoteAsset:    remoteAsset,
@@ -48,10 +52,31 @@ func NewPrefetcher(localCAS casService.LocalCAS, remoteCAS casService.CAS, remot
 		checksumCache:  checksumCache,
 		digestFunction: digestFunction,
 	}
+	p.remoteDownloadQueue = newWorkQueue(p.PrefetchRemote, 12)
+	p.localDownloadQueue = newWorkQueue(p.MaterializeLocal, 4)
+	return p
 }
 
 func (p *Prefetcher) Start(ctx context.Context) (stopFunc func() error, err error) {
-	panic("implement me")
+	p.remoteDownloadQueue.Start(ctx)
+	p.localDownloadQueue.Start(ctx)
+	return func() error {
+		p.remoteDownloadQueue.Stop()
+		p.localDownloadQueue.Stop()
+		return nil
+	}, nil
+}
+
+func (p *Prefetcher) EnqueueRemoteDownload(asset api.Asset, callbacks ...func(api.Asset, integrity.Digest, error)) {
+	p.remoteDownloadQueue.Enqueue(asset, callbacks...)
+}
+
+func (p *Prefetcher) EnqueueLocalDownload(asset api.Asset, callbacks ...func(api.Asset, integrity.Digest, error)) {
+	p.localDownloadQueue.Enqueue(asset, callbacks...)
+}
+
+func (p *Prefetcher) AssetDigest(ctx context.Context, asset api.Asset) (integritypkg.Digest, error) {
+	return p.getOrLearnDigest(ctx, asset)
 }
 
 // RandomAccessStream creates a reader for an asset.
@@ -73,7 +98,7 @@ func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset, of
 		// One of the following conditions is true:
 		// - The file is small enough to download in a single request
 		// - We don't have a remote CAS to stream from
-		if err := p.Materialize(ctx, asset); err != nil {
+		if _, err := p.MaterializeLocal(ctx, asset); err != nil {
 			return nil, err
 		}
 		return p.localCAS.ReadRandomAccessStream(ctx, digest, p.digestFunction, offset, min(limit, digest.SizeBytes))
@@ -91,20 +116,20 @@ func (p *Prefetcher) RandomAccessStream(ctx context.Context, asset api.Asset, of
 
 	// We can and should stream the data from the remote CAS.
 	// use handle.NewStreamingFileHandle to stream data from CAS.
-	if _, err = p.Prefetch(ctx, asset); err != nil {
+	if _, err = p.PrefetchRemote(ctx, asset); err != nil {
 		return nil, err
 	}
 	logging.Debugf("streaming asset from remote CAS (%s: %s; %d bytes)", p.digestFunction.String(), digest.Hex(p.digestFunction), digest.SizeBytes)
 	return handle.NewStreamingFileHandle(p.remoteCAS, digest, p.digestFunction, offset), nil
 }
 
-// Prefetch ensures that the asset referenced by the given URIs and integrity is available in the remote CAS.
+// PrefetchRemote ensures that the asset referenced by the given URIs and integrity is available in the remote CAS.
 // Our only goal is to make the data available remotely, so we efficiently access it for remote execution.
-// This means that calling Prefetch doesn't guarantee that the data is available locally.
+// This means that calling PrefetchRemote doesn't guarantee that the data is available locally.
 // TODO: decide how users can get notified when the prefetching is done.
 // TODO: deduplicate requests.
 // TODO: cache the result of the prefetching with a configurable TTL.
-func (p *Prefetcher) Prefetch(ctx context.Context, asset api.Asset) (integrity.Digest, error) {
+func (p *Prefetcher) PrefetchRemote(ctx context.Context, asset api.Asset) (integrity.Digest, error) {
 	// TODO: make this non-blocking with a method to get notified when the prefetching is done.
 	// TODO: for now, this is blocking - bad.
 
@@ -148,28 +173,28 @@ func (p *Prefetcher) Prefetch(ctx context.Context, asset api.Asset) (integrity.D
 	return fetchBlobResponse.BlobDigest, nil
 }
 
-// Materialize ensures that the asset referenced by the given URIs and integrity is available in the local cache for reading.
+// MaterializeLocal ensures that the asset referenced by the given URIs and integrity is available in the local cache for reading.
 // Our only goal is to make the data available locally, so we can stop as soon as localCAS has the expected data.
-// This means that calling Materialize doesn't guarantee that the data is available remotely.
-func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
+// This means that calling MaterializeLocal doesn't guarantee that the data is available remotely.
+func (p *Prefetcher) MaterializeLocal(ctx context.Context, asset api.Asset) (integrity.Digest, error) {
 	// TODO: make this non-blocking with a method to get notified when the prefetching is done.
 	// TODO: for now, this is blocking - bad.
 	if p.localCAS == nil {
-		return errors.New("Materialize called without disk cache")
+		return integrity.Digest{}, errors.New("Materialize called without disk cache")
 	}
 
 	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
 		// we know the hash and size of the expected data
 		// we can construct the digest in advance
-		return p.materializeWithDigest(ctx, asset, digest)
+		return digest, p.materializeWithDigest(ctx, asset, digest)
 	}
 
 	// we don't know the hash and size of the expected data
 	// we need to fetch the data to learn the hash and size
-	if digest, err := p.Prefetch(ctx, asset); err != nil {
+	if digest, err := p.PrefetchRemote(ctx, asset); err != nil {
 		logging.Debugf("materializing asset %v failed when trying to prefetch remotely - falling back to direct download: %v", asset, err)
 	} else {
-		return p.materializeWithDigest(ctx, asset, digest)
+		return digest, p.materializeWithDigest(ctx, asset, digest)
 	}
 
 	// we failed to prefetch the data remotely
@@ -177,7 +202,7 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 	resp, err := p.downloader.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)
 	if err != nil {
 		logging.Warningf("materializing asset failed when trying to download directly: %v", err)
-		return err
+		return integrity.Digest{}, err
 	}
 	// we learned a new association between the asset and the digest
 	var integrityStrings []string
@@ -186,7 +211,7 @@ func (p *Prefetcher) Materialize(ctx context.Context, asset api.Asset) error {
 	}
 	logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, resp.BlobDigest.Hex(p.digestFunction), resp.BlobDigest.SizeBytes)
 	p.checksumCache.PutIntegrity(asset.Integrity, resp.BlobDigest)
-	return nil
+	return resp.BlobDigest, nil
 }
 
 func (p *Prefetcher) casRemoteToLocalTransfer(ctx context.Context, digests ...integritypkg.Digest) error {
@@ -337,6 +362,8 @@ func (p *Prefetcher) materializeWithDigest(ctx context.Context, asset api.Asset,
 }
 
 func (p *Prefetcher) getOrLearnDigest(ctx context.Context, asset api.Asset) (digest integritypkg.Digest, err error) {
+	// TODO: use special access to local cache to infer the digest (if materialized)
+
 	if digest, ok := p.checksumCache.FromIntegrity(asset.Integrity); ok {
 		return digest, nil
 	}
@@ -354,6 +381,11 @@ func (p *Prefetcher) getOrLearnDigest(ctx context.Context, asset api.Asset) (dig
 		logging.Basicf("Learned new association: %v -> %s (content size: %d bytes)", integrityStrings, digest.Hex(p.digestFunction), digest.SizeBytes)
 		p.checksumCache.PutIntegrity(asset.Integrity, digest)
 	}()
+
+	// TODO: for offline use, we should check if the asset is known locally
+	// This way, we can avoid making network requests.
+	// if p.localCAS != nil {
+	// }
 
 	if p.remoteAsset != nil {
 		fetchBlobResponse, err := p.remoteAsset.FetchBlob(ctx, noFetchTimeout, noFetchOldestContentAcceptable, asset, p.digestFunction)

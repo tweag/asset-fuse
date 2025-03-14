@@ -93,6 +93,11 @@ func Run(ctx context.Context, args []string) {
 	}
 	checksumCache := integrity.NewCache()
 	prefetcher := prefetcher.NewPrefetcher(diskCache, remoteCache, remoteAsset, downloader, checksumCache, digestFunction)
+	stopPrefetcher, err := prefetcher.Start(ctx)
+	if err != nil {
+		cmdhelper.FatalFmt("starting prefetcher: %v", err)
+	}
+	defer stopPrefetcher()
 
 	mountStat, err := os.Stat(mountPoint)
 	if os.IsNotExist(err) {

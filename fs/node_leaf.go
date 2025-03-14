@@ -75,10 +75,7 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	// We can infer that they are coming from Bazel, Buck2, or a similar tool.
 	// Performance hack: we will use this opportunity to prefetch the asset into the remote cache.
 	// This way, remote execution can magically use this file as an action input (without us uploading it to the remote cache).
-	// TODO: make this configurable and non-blocking.
-	if _, err := root.prefetcher.Prefetch(ctx, l.toAsset()); err != nil {
-		logging.Warningf("prefetch failed: %v", err)
-	}
+	root.prefetcher.EnqueueRemoteDownload(l.toAsset())
 
 	var destSizeBytes uint32 = uint32(algorithm.SizeBytes())
 
@@ -197,7 +194,7 @@ func (l *leaf) checksum(ctx context.Context, algorithm integrity.Algorithm) (int
 
 func (l *leaf) size(ctx context.Context) (int64, bool) {
 	root := l.Root().Operations().(*root)
-	return leafSize(ctx, l.manifestNode, root.digestAlgorithm, root)
+	return leafSize(ctx, l.manifestNode, root)
 }
 
 func leafToAsset(leafNode *manifest.Leaf) api.Asset {
@@ -209,15 +206,8 @@ func leafToAsset(leafNode *manifest.Leaf) api.Asset {
 }
 
 func leafDigest(ctx context.Context, manifestLeaf *manifest.Leaf, root *root) (integrity.Digest, error) {
-	if digest, ok := root.checksumCache.FromIntegrity(manifestLeaf.Integrity); ok {
-		return digest, nil
-	}
-	// TODO: make this behavior configurable:
-	// - fail the operation
-	// - fetch the digest
-	// - use a default size
-
-	digest, err := root.prefetcher.Prefetch(ctx, leafToAsset(manifestLeaf))
+	asset := leafToAsset(manifestLeaf)
+	digest, err := root.prefetcher.AssetDigest(ctx, asset)
 	if err != nil {
 		return integrity.Digest{}, err
 	}
@@ -239,7 +229,7 @@ func leafChecksum(ctx context.Context, manifestLeaf *manifest.Leaf, algorithm in
 	return integrity.Checksum{}, syscall.ENODATA
 }
 
-func leafSize(ctx context.Context, manifestLeaf *manifest.Leaf, algorithm integrity.Algorithm, root *root) (int64, bool) {
+func leafSize(ctx context.Context, manifestLeaf *manifest.Leaf, root *root) (int64, bool) {
 	if manifestLeaf.SizeHint >= 0 {
 		return manifestLeaf.SizeHint, true
 	}
