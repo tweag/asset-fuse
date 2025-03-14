@@ -28,6 +28,9 @@ type GlobalConfig struct {
 	// CredentialHelper is a utility to obtain credentials for a given uri.
 	// It follows the credential helper spec: https://github.com/EngFlow/credential-helper-spec
 	CredentialHelper string `json:"credential_helper,omitempty"`
+	// If set, the credentials obtained by the credential helper will be propagated to the remote downloader
+	// via special qualifiers in Fetch.
+	RemoteDownloaderPropagateCredentials *bool `json:"remote_downloader_propagate_credentials,omitempty"`
 	// Let any read operations on regular files fail with EBADF.
 	// This is useful to test if prefetching and xattr optimizations are working with Buck2 and Bazel:
 	// When remote execution is used and the remote asset service is available,
@@ -87,13 +90,15 @@ func ReadConfig(reader ConfigReader, config GlobalConfig) (GlobalConfig, error) 
 
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
-		DigestFunction:  "sha256",
-		DigestXattrName: "", // disable custom name by default
-		ManifestPath:    "manifest.json",
-		DiskCachePath:   "~/.cache/asset-fuse",
-		Remote:          "",
-		FailReads:       nil,
-		FUSEDebug:       nil,
-		LogLevel:        "basic",
+		DigestFunction:                       "sha256",
+		DigestXattrName:                      "", // disable custom name by default
+		ManifestPath:                         "manifest.json",
+		DiskCachePath:                        "~/.cache/asset-fuse",
+		Remote:                               "",
+		CredentialHelper:                     "",
+		RemoteDownloaderPropagateCredentials: nil,
+		FailReads:                            nil,
+		FUSEDebug:                            nil,
+		LogLevel:                             "basic",
 	}
 }

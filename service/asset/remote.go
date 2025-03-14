@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	remoteasset_proto "github.com/bazelbuild/remote-apis/build/bazel/remote/asset/v1"
@@ -12,6 +13,7 @@ import (
 	"github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/integrity"
 	integritypkg "github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 	"github.com/tweag/asset-fuse/service/internal/protohelper"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -21,17 +23,21 @@ import (
 // RemoteAssetService uses the remote asset API to access assets via gRPC.
 // See also: https://raw.githubusercontent.com/bazelbuild/remote-apis/refs/tags/v2.11.0-rc2/build/bazel/remote/asset/v1/remote_asset.proto
 type RemoteAssetService struct {
-	client remoteasset_proto.FetchClient
+	client               remoteasset_proto.FetchClient
+	helper               credential.Helper
+	propagateCredentials bool
 }
 
-func NewRemote(target string, helper credential.Helper, opts ...grpc.DialOption) (*RemoteAssetService, error) {
+func NewRemote(target string, helper credential.Helper, propagateCredentials bool, opts ...grpc.DialOption) (*RemoteAssetService, error) {
 	conn, err := protohelper.Client(target, helper, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RemoteAssetService{
-		client: remoteasset_proto.NewFetchClient(conn),
+		client:               remoteasset_proto.NewFetchClient(conn),
+		helper:               helper,
+		propagateCredentials: propagateCredentials,
 	}, nil
 }
 
@@ -39,6 +45,10 @@ func (r *RemoteAssetService) FetchBlob(
 	ctx context.Context, timeout time.Duration, oldestContentAccepted time.Time,
 	asset api.Asset, digestFunction integrity.Algorithm,
 ) (FetchBlobResponse, error) {
+	if r.propagateCredentials {
+		asset.Qualifiers = r.authenticate(ctx, asset)
+	}
+
 	resp, err := r.client.FetchBlob(ctx, protoFetchBlobRequest(
 		timeout, oldestContentAccepted, asset.URIs, asset.Integrity, asset.Qualifiers, digestFunction,
 	))
@@ -61,6 +71,29 @@ func (r *RemoteAssetService) FetchBlob(
 	}
 
 	return out, nil
+}
+
+func (r *RemoteAssetService) authenticate(ctx context.Context, asset api.Asset) map[string]string {
+	updatedQualifiers := maps.Clone(asset.Qualifiers)
+
+	// we query the credential helper for this asset
+	// and add the headers to the qualifiers
+	for i, url := range asset.URIs {
+		headers, _, err := r.helper.Get(ctx, url)
+		if err != nil {
+			logging.Warningf("getting credentials for %s: %v", url, err)
+		}
+		if len(headers) > 0 && updatedQualifiers == nil {
+			updatedQualifiers = make(map[string]string)
+		}
+		for k, v := range headers {
+			// This is a Bazel-specific convention for specifying HTTP headers per URL.
+			// https://www.rfc-editor.org/rfc/rfc9110.html#name-field-order permits
+			// merging the field-values with a comma.
+			updatedQualifiers[fmt.Sprintf("http_header_url:%d:%s", i, k)] = strings.Join(v, ",")
+		}
+	}
+	return updatedQualifiers
 }
 
 func protoFetchBlobRequest(

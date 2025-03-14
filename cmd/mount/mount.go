@@ -80,7 +80,11 @@ func Run(ctx context.Context, args []string) {
 		if err != nil {
 			cmdhelper.FatalFmt("creating remote cache at %s: %v", globalConfig.Remote, err)
 		}
-		remoteAsset, err = asset.NewRemote(globalConfig.Remote, credentialHelper)
+		var propagateCredentials bool
+		if globalConfig.RemoteDownloaderPropagateCredentials != nil {
+			propagateCredentials = *globalConfig.RemoteDownloaderPropagateCredentials
+		}
+		remoteAsset, err = asset.NewRemote(globalConfig.Remote, credentialHelper, propagateCredentials)
 		if err != nil {
 			cmdhelper.FatalFmt("creating remote asset service at %s: %v", globalConfig.Remote, err)
 		}

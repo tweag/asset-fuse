@@ -67,8 +67,9 @@ const (
 type flagConfig struct {
 	api.GlobalConfig
 	// redefine any bool flags to satisfy flagset.BoolVar
-	FUSEDebug bool
-	FailReads bool
+	RemoteDownloaderPropagateCredentials bool
+	FUSEDebug                            bool
+	FailReads                            bool
 }
 
 func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
@@ -83,6 +84,7 @@ func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
 	}
 	if preset&FlagPresetRemote != 0 {
 		flagSet.StringVar(&config.Remote, "remote", "", "grpc(s) endpoint of the REAPI server")
+		flagSet.BoolVar(&config.RemoteDownloaderPropagateCredentials, "remote_downloader_propagate_credentials", false, "Propagate credentials to the remote downloader")
 	}
 	if preset&FlagPresetFUSE != 0 {
 		flagSet.StringVar(&config.DigestXattrName, "unix_digest_hash_attribute_name", "", `Name of the extended attribute (xattr) used to store the digest of a file. Default: "user.<digest_function>"`)
@@ -112,6 +114,9 @@ func InjectGlobalFlagsAndConfigure(args []string, flagSet *flag.FlagSet, preset 
 	}
 	// fixup any bool vars
 	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "remote_downloader_propagate_credentials" {
+			flagConfig.GlobalConfig.RemoteDownloaderPropagateCredentials = &flagConfig.RemoteDownloaderPropagateCredentials
+		}
 		if f.Name == "fuse_debug" {
 			flagConfig.GlobalConfig.FUSEDebug = &flagConfig.FUSEDebug
 		}
