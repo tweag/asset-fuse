@@ -8,9 +8,11 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	goFUSEfs "github.com/hanwen/go-fuse/v2/fs"
@@ -171,6 +173,18 @@ func Run(ctx context.Context, args []string) {
 	if err := server.WaitMount(); err != nil {
 		cmdhelper.FatalFmt("mounting: %v", err)
 	}
+
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		stopSignal := <-stopChan
+		logging.Basicf("Received %v. Unmounting %s", stopSignal.String(), mountPoint)
+
+		watcher.Stop()
+		if err := server.Unmount(); err != nil {
+			logging.Errorf("Unmounting: %v", err)
+		}
+	}()
 
 	// Starts the manifest watcher in the background.
 	// Adds itself to the wait group.
