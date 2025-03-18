@@ -1,11 +1,15 @@
 package mount
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +47,7 @@ func Run(ctx context.Context, args []string) {
 		os.Exit(1)
 	}
 	// TODO: validate viewName against the allowed values and print usage if needed
-	flagSet.StringVar(&viewName, "view", "default", "The view to use on the manifest. Can be used to display assets in different hierarchies. Allowed values: [default, uri, repository_cache, bazel_disk_cache]")
+	flagSet.StringVar(&viewName, "view", "default", "The view to use on the manifest. Can be used to display assets in different hierarchies. Allowed values: [default, bazel_repo, uri, repository_cache, bazel_disk_cache]")
 	globalConfig, err := cmdhelper.InjectGlobalFlagsAndConfigure(args, flagSet, cmdhelper.FlagPresetRemote|cmdhelper.FlagPresetDiskCache|cmdhelper.FlagPresetFUSE)
 	if err != nil {
 		cmdhelper.FatalFmt("%v", err)
@@ -62,6 +66,20 @@ func Run(ctx context.Context, args []string) {
 	diskCache, err := cas.NewDisk(cmdhelper.SubstituteHome(globalConfig.DiskCachePath))
 	if err != nil {
 		cmdhelper.FatalFmt("creating disk cache at %s: %v", globalConfig.DiskCachePath, err)
+	}
+	if len(view.FakeLeafs) > 0 {
+		// hack: we inject some additional entries into the tree
+		data := cas.DigestsAndData{}
+		for name, content := range view.FakeLeafs {
+			digest, err := digestFunction.CalculateDigest(bytes.NewReader(content))
+			if err != nil {
+				cmdhelper.FatalFmt("calculating digest for fake leaf %s: %v", name, err)
+			}
+			data = append(data, cas.DigestAndData{Digest: digest, Data: content})
+		}
+		if _, err := diskCache.BatchUpdateBlobs(ctx, data, digestFunction); err != nil {
+			cmdhelper.FatalFmt("populating disk cache with fake leafs %s: %v", strings.Join(slices.Collect(maps.Keys(view.FakeLeafs)), ", "), err)
+		}
 	}
 	var credentialHelper credential.Helper
 	if len(globalConfig.CredentialHelper) > 0 {

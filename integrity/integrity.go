@@ -385,6 +385,15 @@ func IntegrityFromChecksums(checksums ...Checksum) Integrity {
 	return i
 }
 
+func EmptyBlobIntegrity() Integrity {
+	return Integrity{
+		sha256: Checksum{Algorithm: SHA256, Hash: zeroSizedChecksumSHA256[:]},
+		sha384: Checksum{Algorithm: SHA384, Hash: zeroSizedChecksumSHA384[:]},
+		sha512: Checksum{Algorithm: SHA512, Hash: zeroSizedChecksumSHA512[:]},
+		blake3: Checksum{Algorithm: Blake3, Hash: zeroSizedChecksumBlake3[:]},
+	}
+}
+
 func (i Integrity) ChecksumForAlgorithm(alg Algorithm) (Checksum, bool) {
 	switch alg {
 	case SHA256:

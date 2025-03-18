@@ -1,0 +1,16 @@
+bazel_dep(name = "rules_gcs", version = "1.0.0")
+git_override(
+    module_name = "rules_gcs",
+    commit = "9be82e00bcc81e0ebbc5f9ea0c80d036b88317f2",
+    remote = "https://github.com/tweag/rules_gcs.git",
+)
+
+gcs_bucket = use_extension("@rules_gcs//gcs:extensions.bzl", "gcs_bucket")
+gcs_bucket.from_file(
+    name = "hello_world",
+    bucket = "rules_gcs",
+    lockfile = "//:manifest.json",
+    lockfile_jsonpath = ".paths",
+    method = "eager",
+)
+use_repo(gcs_bucket, "hello_world")

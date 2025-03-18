@@ -1,0 +1,11 @@
+{
+  "paths": {
+    "hello_world": {
+      "integrity": "sha256-/Llq5Bi4Y+uTiDqUzDn4FUXP35fiDSku0b2PeKFTztw=",
+      "size": 22
+    }
+  },
+  "uri_templates": [
+    "https://storage.googleapis.com/hello_world/{path_urlencoded}"
+  ]
+}
