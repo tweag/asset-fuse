@@ -15,6 +15,10 @@ type GlobalConfig struct {
 	DigestFunction string `json:"digest_function,omitempty"`
 	// Name of the extended attribute (xattr) used to store the digest of a file.
 	DigestXattrName string `json:"unix_digest_hash_attribute_name,omitempty"`
+	// Encoding of the digest in the xattr.
+	// For Bazel, this is "raw". For Buck2, this is "hex".
+	// Default: "raw"
+	DigestXattrEncoding string `json:"unix_digest_hash_attribute_encoding,omitempty"`
 	// The path to the manifest file.
 	ManifestPath string `json:"manifest,omitempty"`
 	// The path to the local (disk) cache directory.
@@ -92,6 +96,7 @@ func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
 		DigestFunction:                       "sha256",
 		DigestXattrName:                      "", // disable custom name by default
+		DigestXattrEncoding:                  "raw",
 		ManifestPath:                         "manifest.json",
 		DiskCachePath:                        "~/.cache/asset-fuse",
 		Remote:                               "",

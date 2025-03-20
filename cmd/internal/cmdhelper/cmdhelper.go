@@ -88,6 +88,7 @@ func globalFlags(flagSet *flag.FlagSet, preset FlagPreset) *flagConfig {
 	}
 	if preset&FlagPresetFUSE != 0 {
 		flagSet.StringVar(&config.DigestXattrName, "unix_digest_hash_attribute_name", "", `Name of the extended attribute (xattr) used to store the digest of a file. Default: "user.<digest_function>"`)
+		flagSet.StringVar(&config.DigestXattrEncoding, "unix_digest_hash_attribute_encoding", "", `Encoding of the digest in the xattr. For Bazel, this is "raw". For Buck2, this is "hex". Default: "raw"`)
 		flagSet.BoolVar(&config.FailReads, "fail_reads", false, "Let any read operations on regular files fail with EBADF")
 		flagSet.BoolVar(&config.FUSEDebug, "fuse_debug", false, "Emits debug information about the FUSE filesystem")
 	}

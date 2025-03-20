@@ -78,13 +78,24 @@ func (l *leaf) Getxattr(ctx context.Context, attr string, dest []byte) (uint32, 
 	root.prefetcher.EnqueueRemoteDownload(l.toAsset())
 
 	var destSizeBytes uint32 = uint32(algorithm.SizeBytes())
+	if root.digestHashXattrEncoding == XattrEncodingHex {
+		// hex encoding takes up two characters per byte
+		destSizeBytes *= 2
+	}
 
 	if len(dest) < int(destSizeBytes) {
 		// buffer too small
 		return destSizeBytes, syscall.ERANGE
 	}
 
-	if n := copy(dest, csum.Hash); n != len(csum.Hash) {
+	var source []byte
+	if root.digestHashXattrEncoding == XattrEncodingHex {
+		source = []byte(csum.Hex())
+	} else {
+		source = csum.Hash
+	}
+
+	if n := copy(dest, source); n != len(source) {
 		// should be unreachable (we checked the buffer size in advance)
 		// and there is no other reason for the copy to fail
 		return 0, syscall.EIO

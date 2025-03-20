@@ -342,7 +342,17 @@ func xattrsForAsset(asset api.Asset, globalConfig api.GlobalConfig) map[string][
 	}
 	digestFunction, _ := integrity.AlgorithmFromString(globalConfig.DigestFunction)
 	if checksum, ok := asset.Integrity.ChecksumForAlgorithm(digestFunction); ok && globalConfig.DigestXattrName != "" {
-		xattrs[globalConfig.DigestXattrName] = checksum.Hash
+		var digestValue []byte
+		switch globalConfig.DigestXattrEncoding {
+		case "hex":
+			digestValue = []byte(checksum.Hex())
+		case "raw":
+			digestValue = checksum.Hash
+		default:
+			logging.Warningf("Invalid digest xattr encoding: %s", globalConfig.DigestXattrEncoding)
+			digestValue = checksum.Hash
+		}
+		xattrs[globalConfig.DigestXattrName] = digestValue
 	}
 	return xattrs
 }

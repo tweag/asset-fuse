@@ -6,6 +6,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/tweag/asset-fuse/fs/manifest"
 	"github.com/tweag/asset-fuse/integrity"
+	"github.com/tweag/asset-fuse/internal/logging"
 	"github.com/tweag/asset-fuse/service/prefetcher"
 )
 
@@ -29,6 +30,10 @@ type root struct {
 	// In addition, we always support the "user." prefix for Buck2.
 	digestHashXattrName string
 
+	// the encoding of the digest hash in the extended attribute
+	// For Bazel, this is raw. For Buck2, this is hex.
+	digestHashXattrEncoding xattrEncoding
+
 	// whether to fail reads on leaf nodes
 	failReads bool
 
@@ -37,23 +42,43 @@ type root struct {
 
 func Root(
 	manifestTree manifest.ManifestTree,
-	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string, failReads bool,
+	digestAlgorithm integrity.Algorithm, mtime time.Time, digestHashAttributeName string, xattrEncoding xattrEncoding, failReads bool,
 	prefetcher *prefetcher.Prefetcher,
 ) *root {
 	return &root{
 		dirent: dirent{
 			manifestNode: manifestTree.Root,
 		},
-		digestAlgorithm:     digestAlgorithm,
-		mtime:               mtime,
-		digestHashXattrName: digestHashAttributeName,
-		failReads:           failReads,
-		prefetcher:          prefetcher,
+		digestAlgorithm:         digestAlgorithm,
+		mtime:                   mtime,
+		digestHashXattrName:     digestHashAttributeName,
+		digestHashXattrEncoding: xattrEncoding,
+		failReads:               failReads,
+		prefetcher:              prefetcher,
 	}
 }
 
 func (r *root) UpdateMtime(mtime time.Time) {
 	r.mtime = mtime
+}
+
+type xattrEncoding int
+
+const (
+	XattrEncodingRaw xattrEncoding = iota
+	XattrEncodingHex
+)
+
+func XattrEncodingFromString(s string) xattrEncoding {
+	switch s {
+	case "raw":
+		return XattrEncodingRaw
+	case "hex":
+		return XattrEncodingHex
+	default:
+		logging.Errorf("Unknown xattr encoding %q, falling back to raw", s)
+		return XattrEncodingRaw
+	}
 }
 
 // ensure root type embeds fs.Inode
