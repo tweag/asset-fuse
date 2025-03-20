@@ -1,0 +1,20 @@
+http_file(
+    name = "air_quality_csv",
+    urls = ["https://data.cityofnewyork.us/api/views/c3uy-2p5r/rows.csv?accessType=DOWNLOAD"],
+    sha256 = "30367f13b77119109a4d0aaac5f75e85885a87d565b623b455af831657115ee8",
+    out = "Air_Quality.csv",
+)
+
+genrule(
+    name = "slow_air_quality_line_count",
+    srcs = [":air_quality_csv"],
+    out = "slow_air_quality_line_count.txt",
+    cmd = 'wc -l $SRCS > $OUT',
+)
+
+genrule(
+    name = "fast_air_quality_line_count",
+    srcs = ["mnt/air-quality/Air_Quality.csv"],
+    out = "fast_air_quality_line_count.txt",
+    cmd = 'wc -l $SRCS > $OUT',
+)
