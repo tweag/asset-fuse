@@ -2,6 +2,9 @@
 
 > Build-without-the-bytes for assets
 
+![RBE diagram](/docs/assets/remote_execution_light.svg#gh-light-mode-only)
+![RBE diagram](/docs/assets/remote_execution_dark.svg#gh-dark-mode-only)
+
 This example demonstrates the biggest optimization provided by the FUSE filesystem.
 The following conditions need to be met:
 - Bazel must be configured to read digests from extended file attributes (`--unix_digest_hash_attribute_name`)
