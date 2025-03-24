@@ -35,6 +35,7 @@ func Run(ctx context.Context, args []string) {
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	var viewName string
+	var check bool
 
 	flagSet := flag.NewFlagSet("mount", flag.ExitOnError)
 	flagSet.Usage = func() {
@@ -52,6 +53,7 @@ func Run(ctx context.Context, args []string) {
 	}
 	// TODO: validate viewName against the allowed values and print usage if needed
 	flagSet.StringVar(&viewName, "view", "default", "The view to use on the manifest. Can be used to display assets in different hierarchies. Allowed values: [default, bazel_repo, uri, repository_cache, bazel_disk_cache]")
+	flagSet.BoolVar(&check, "check", false, "Check an existing mountpoint and exit.")
 	globalConfig, err := cmdhelper.InjectGlobalFlagsAndConfigure(args, flagSet, cmdhelper.FlagPresetRemote|cmdhelper.FlagPresetDiskCache|cmdhelper.FlagPresetFUSE)
 	if err != nil {
 		cmdhelper.FatalFmt("%v", err)
@@ -62,6 +64,35 @@ func Run(ctx context.Context, args []string) {
 	}
 
 	mountPoint := flagSet.Arg(0)
+
+	mountStat, err := os.Stat(mountPoint)
+	if os.IsNotExist(err) {
+		cmdhelper.FatalFmt("mount point %s does not exist", mountPoint)
+	} else if err != nil {
+		cmdhelper.FatalFmt("statting mount point %s: %v", mountPoint, err)
+	}
+	if !mountStat.IsDir() {
+		cmdhelper.FatalFmt("mount point %s is not a directory", mountPoint)
+	}
+	mounts, err := mountinfo.GetMounts()
+	if err != nil {
+		cmdhelper.FatalFmt("getting mountinfo: %v", err)
+	}
+	info, ok := mounts.MountPoint(mountPoint)
+	if check {
+		if !ok {
+			cmdhelper.FatalFmt("%s is not mounted", mountPoint)
+		}
+		if info.FSType != api.FSType {
+			cmdhelper.FatalFmt("%s is not an asset-fuse mount", mountPoint)
+		}
+		fmt.Fprintf(os.Stderr, "%s is mounted\n", mountPoint)
+		return
+	}
+	if ok {
+		cmdhelper.FatalFmt("Mount point %s is already in use. Please ensure the mount point is ready by running:\n  $ umount %s", mountPoint, mountPoint)
+	}
+
 	digestFunction, ok := integrity.AlgorithmFromString(globalConfig.DigestFunction)
 	view, ok := manifest.ViewFromString(viewName)
 	if !ok {
@@ -124,23 +155,6 @@ func Run(ctx context.Context, args []string) {
 		cmdhelper.FatalFmt("starting prefetcher: %v", err)
 	}
 	defer stopPrefetcher()
-
-	mountStat, err := os.Stat(mountPoint)
-	if os.IsNotExist(err) {
-		cmdhelper.FatalFmt("mount point %s does not exist", mountPoint)
-	} else if err != nil {
-		cmdhelper.FatalFmt("statting mount point %s: %v", mountPoint, err)
-	}
-	if !mountStat.IsDir() {
-		cmdhelper.FatalFmt("mount point %s is not a directory", mountPoint)
-	}
-	mounts, err := mountinfo.GetMounts()
-	if err != nil {
-		cmdhelper.FatalFmt("getting mountinfo: %v", err)
-	}
-	if _, ok := mounts.MountPoint(mountPoint); ok {
-		cmdhelper.FatalFmt("Mount point %s is already in use. Please ensure the mount point is ready by running:\n  $ umount %s", mountPoint, mountPoint)
-	}
 
 	logging.Basicf("Mounting %s at %s", globalConfig.ManifestPath, mountPoint)
 

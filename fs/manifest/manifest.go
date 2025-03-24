@@ -46,7 +46,7 @@ func applyTemplateToEntry(template, entrypath string, entry ManifestEntry) strin
 	if entry.Size != nil {
 		replacements = append(replacements, "{size}", fmt.Sprintf("%d", *entry.Size))
 	}
-	integrityStrings, getIntegrityErr := entry.getIntegrity()
+	integrityStrings, getIntegrityErr := entry.GetIntegrity()
 	checksums, integrityFromStringErr := integrity.IntegrityFromString(integrityStrings...)
 	if getIntegrityErr == nil && integrityFromStringErr == nil {
 		for checksum := range checksums.Items() {
@@ -82,7 +82,7 @@ func (m ManifestPaths) validate() error {
 				}
 			}
 		}
-		integrity, err := entry.getIntegrity()
+		integrity, err := entry.GetIntegrity()
 		if err != nil {
 			issuesForPath = append(issuesForPath, err.Error())
 		} else if len(integrity) == 0 {
@@ -130,7 +130,7 @@ type ManifestEntry struct {
 	Executable bool `json:"executable,omitempty"`
 }
 
-func (e *ManifestEntry) getIntegrity() ([]string, error) {
+func (e *ManifestEntry) GetIntegrity() ([]string, error) {
 	var integrity []string
 	var singleIntegrity string
 	if err := json.Unmarshal(e.Integrity, &integrity); err == nil {
@@ -165,7 +165,7 @@ type Leaf struct {
 }
 
 func LeafFromEntry(entry ManifestEntry) (Leaf, error) {
-	integrityStrings, err := entry.getIntegrity()
+	integrityStrings, err := entry.GetIntegrity()
 	if err != nil {
 		return Leaf{}, err
 	}

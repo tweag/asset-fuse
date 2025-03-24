@@ -111,7 +111,7 @@ func casView(paths ManifestPaths, templateStr string, onlyPrimaryAlgorithm bool,
 	tree := NewTree()
 	pathsToCreateWithURIs := map[integrity.Algorithm]map[integrity.Digest]casViewLeafInfo{}
 	for path, entry := range paths {
-		sriList, err := entry.getIntegrity()
+		sriList, err := entry.GetIntegrity()
 		if err != nil {
 			return ManifestTree{}, fmt.Errorf("building leaf node %s for tree from manifest: %w", path, err)
 		}
