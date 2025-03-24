@@ -7,6 +7,4 @@ build:buildbuddy --remote_executor=grpcs://remote.buildbuddy.io
 build:buildbuddy --remote_timeout=3600
 build:buildbuddy --shell_executable=/bin/bash
 
-build:fuse --override_repository=rules_gcs++gcs_bucket+hello_world=%workspace%/mnt
-
 try-import %workspace%/.bazelrc.user

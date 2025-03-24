@@ -1,16 +1,19 @@
-bazel_dep(name = "rules_gcs", version = "1.0.0")
-git_override(
-    module_name = "rules_gcs",
-    commit = "9be82e00bcc81e0ebbc5f9ea0c80d036b88317f2",
-    remote = "https://github.com/tweag/rules_gcs.git",
+bazel_dep(name = "asset-fuse", version = "0.0.0")
+local_path_override(
+    module_name = "asset-fuse",
+    path = "../..",
 )
 
-gcs_bucket = use_extension("@rules_gcs//gcs:extensions.bzl", "gcs_bucket")
-gcs_bucket.from_file(
-    name = "hello_world",
-    bucket = "rules_gcs",
-    lockfile = "//:manifest.json",
-    lockfile_jsonpath = ".paths",
-    method = "eager",
+fuse = use_extension("@asset-fuse//bzl:fuse.bzl", "fuse")
+fuse.mount(
+    name = "dataset",
+    manifest = "//:manifest.json",
+    mountpoint = "mnt",
+    # Set this to True to enforce
+    # using asset-fs.
+    # The default (False) works on any OS
+    # and in any environment, but may use Bazel's
+    # downloader if the filesystem is not mounted.
+    strict = False,
 )
-use_repo(gcs_bucket, "hello_world")
+use_repo(fuse, "dataset")

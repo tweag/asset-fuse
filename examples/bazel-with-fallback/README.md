@@ -1,6 +1,6 @@
 # Example of using asset-fuse and rules_gcs together
 
-This example demonstrates how to use FUSE if available, but fall back to a module extension / repository rule if needed.
+This example demonstrates how to use FUSE if available, but fall back to a repository rule if needed.
 
 ## How to use with FUSE:
 
@@ -12,7 +12,7 @@ go run ../../cmd/asset-fuse mount --manifest=manifest.json --view=bazel_repo --l
 
 Terminal 2:
 ```
-bazel build --config=fuse @hello_world//:hello_world
+bazel build //:air_quality_line_count
 bazel shutdown
 ```
 
