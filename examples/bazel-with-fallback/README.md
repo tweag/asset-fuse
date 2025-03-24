@@ -1,6 +1,6 @@
-# Example of using asset-fuse and rules_gcs together
+# Example of using asset-fuse in Bazel with a fallback to Bazel's Downloader
 
-This example demonstrates how to use FUSE if available, but fall back to a module extension / repository rule if needed.
+This example demonstrates how to use FUSE if available, but fall back to a repository rule if needed.
 
 ## How to use with FUSE:
 
@@ -12,7 +12,7 @@ go run ../../cmd/asset-fuse mount --manifest=manifest.json --view=bazel_repo --l
 
 Terminal 2:
 ```
-bazel build --config=fuse @hello_world//:hello_world
+bazel build //:air_quality_line_count
 bazel shutdown
 ```
 
@@ -21,5 +21,5 @@ After the build, ensure no process is holding on to files in `mnt` (by killing t
 ## How to use without FUSE:
 
 ```
-bazel build @hello_world//:hello_world
+bazel build //:air_quality_line_count
 ```
