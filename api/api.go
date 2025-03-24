@@ -10,3 +10,9 @@ type Asset struct {
 	Integrity  integrity.Integrity
 	Qualifiers map[string]string
 }
+
+const (
+	FSTypeParent = "fuse"
+	FSTypeChild  = "asset"
+	FSType       = FSTypeParent + "." + FSTypeChild
+)

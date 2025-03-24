@@ -17,9 +17,11 @@ import (
 
 	goFUSEfs "github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/tweag/asset-fuse/api"
 	"github.com/tweag/asset-fuse/auth/credential"
 	"github.com/tweag/asset-fuse/cmd/internal/cmdhelper"
 	"github.com/tweag/asset-fuse/fs/manifest"
+	"github.com/tweag/asset-fuse/fs/mountinfo"
 	"github.com/tweag/asset-fuse/fs/watcher"
 	"github.com/tweag/asset-fuse/integrity"
 	"github.com/tweag/asset-fuse/internal/logging"
@@ -132,6 +134,13 @@ func Run(ctx context.Context, args []string) {
 	if !mountStat.IsDir() {
 		cmdhelper.FatalFmt("mount point %s is not a directory", mountPoint)
 	}
+	mounts, err := mountinfo.GetMounts()
+	if err != nil {
+		cmdhelper.FatalFmt("getting mountinfo: %v", err)
+	}
+	if _, ok := mounts.MountPoint(mountPoint); ok {
+		cmdhelper.FatalFmt("Mount point %s is already in use. Please ensure the mount point is ready by running:\n  $ umount %s", mountPoint, mountPoint)
+	}
 
 	logging.Basicf("Mounting %s at %s", globalConfig.ManifestPath, mountPoint)
 
@@ -150,17 +159,14 @@ func Run(ctx context.Context, args []string) {
 			Debug:                globalConfig.FUSEDebugEnable(),
 			IgnoreSecurityLabels: true,
 			FsName:               "asset-fuse",
-			Name:                 "asset",
+			Name:                 api.FSTypeChild,
 		},
 	}
 	rawFS := goFUSEfs.NewNodeFS(root, &opts)
 	server, err := fuse.NewServer(rawFS, mountPoint, &opts.MountOptions)
 	if err != nil {
 		logging.Errorf("%v", err)
-		cmdhelper.FatalFmt("Mounting the filesystem at %q failed. "+
-			"In most cases, this is because of a previous instance of the filesystem wasn't properly unmounted. "+
-			"Please ensure the mount point is ready by running:\n"+
-			"  $ umount %s", mountPoint, mountPoint)
+		cmdhelper.FatalFmt("Mounting the filesystem at %q failed.", mountPoint)
 	}
 
 	wg.Add(1)
