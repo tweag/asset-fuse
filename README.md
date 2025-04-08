@@ -3,6 +3,10 @@
 ![Architecture](/docs/assets/architecture_light.svg#gh-light-mode-only)
 ![Architecture](/docs/assets/architecture_dark.svg#gh-dark-mode-only)
 
+## Introduction
+
+[We recommend looking at the slides prepared for the Munich Build Meetup 2025][build-meetup-presentation]
+
 ## Demos
 
 - [Simple demo (no remote cache required)](/examples/data-science/)
@@ -21,3 +25,4 @@
 
 [git-lfs]: https://git-lfs.com/
 [dvc]: https://dvc.org/
+[build-meetup-presentation]: https://docs.google.com/presentation/d/1SiElWt2GRGTxrCYgGPIRnODRA5XYUyccm1xLv82jpFc/edit?usp=sharing
