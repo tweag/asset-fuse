@@ -57,3 +57,5 @@ const (
 )
 
 const FMODE_ACCESS = FMODE_READ | FMODE_WRITE | FMODE_EXEC
+
+const specialHiddenWatchFile = ".asset-fuse-hidden-watch-file"

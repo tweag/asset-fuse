@@ -40,6 +40,9 @@ def _fuse_impl(module_ctx):
             root_module_path = module_ctx.path(Label("@@//:MODULE.bazel")).dirname
             mountpoint_abs = root_module_path.get_child(mountpoint_abs)
 
+        # invalidate the module extension whenever the magic watchfile changes
+        # (on unmount or mount, for example)
+        module_ctx.watch(mountpoint_abs.get_child(".asset-fuse-hidden-watch-file"))
         check_result = module_ctx.execute([mounter, "mount", "--manifest", module_ctx.path(mount.manifest), "--check", mountpoint_abs])
         if check_result.return_code == 0:
             module_ctx.report_progress("{} is mounted. Symlinking repository.".format(mountpoint_abs))

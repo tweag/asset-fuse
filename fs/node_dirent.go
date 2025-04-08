@@ -30,6 +30,16 @@ func (n *dirent) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 
 	root := n.Root().Operations().(*root)
 
+	if name == specialHiddenWatchFile {
+		// special hidden file that can be used to watch for mount / unmount events
+		out.Size = uint64(len(root.mtime.String()))
+		out.Blocks = (out.Size + 511) / 512
+		out.Mode = syscall.S_IFREG | 0o444
+		return n.NewInode(ctx, &watcherfile{}, fs.StableAttr{
+			Mode: syscall.S_IFREG,
+		}), 0
+	}
+
 	child, ok := n.manifestNode.Children[name]
 	if !ok {
 		// child not found
